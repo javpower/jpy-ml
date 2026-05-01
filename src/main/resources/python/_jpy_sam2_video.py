@@ -2,17 +2,7 @@
 
 
 def jpy_sam2_video_start(model, video_path, prompts):
-    """Initialize video tracking with SAM 2.
-
-    Args:
-        model: Loaded SAM model
-        video_path: Path to the video file
-        prompts: Initial prompts for the first frame
-
-    Returns:
-        Tracker object
-    """
-    # Convert prompts
+    """Initialize video tracking with SAM 2."""
     points = []
     boxes = []
     labels = []
@@ -24,7 +14,6 @@ def jpy_sam2_video_start(model, video_path, prompts):
         elif p['type'] == 'box':
             boxes.append([p['x1'], p['y1'], p['x2'], p['y2']])
 
-    # Create tracker
     tracker = {
         'model': model,
         'video_path': video_path,
@@ -38,34 +27,24 @@ def jpy_sam2_video_start(model, video_path, prompts):
 
 
 def jpy_sam2_video_add_prompt(tracker, frame_index, prompt):
-    """Add a prompt to a specific frame.
-
-    Args:
-        tracker: Tracker object
-        frame_index: Frame index (0-based)
-        prompt: Prompt dict
-    """
+    """Add a prompt to a specific frame."""
     if frame_index not in tracker['frame_prompts']:
         tracker['frame_prompts'][frame_index] = []
-
-    tracker['frame_prompts'][frame_index].append(prompt)
+    tracker['frame_prompts'][frame_index].append(dict(prompt))
 
 
 def jpy_sam2_video_propagate(tracker):
     """Propagate tracking through all frames.
 
-    Args:
-        tracker: Tracker object
-
-    Returns:
-        dict with tracking results for all frames
+    Uses fresh prompts per frame (merged from initial + frame-specific)
+    to avoid state accumulation issues in Jep environment.
     """
     import cv2
+    import numpy as np
 
     model = tracker['model']
     video_path = tracker['video_path']
 
-    # Open video
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Failed to open video: {video_path}")
@@ -73,30 +52,33 @@ def jpy_sam2_video_propagate(tracker):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_results = []
 
-    # Process frames
     frame_idx = 0
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Check for frame-specific prompts
+        # Merge initial prompts with frame-specific prompts
+        points = list(tracker['points'])
+        boxes = list(tracker['boxes'])
+        labels = list(tracker['labels'])
+
         if frame_idx in tracker['frame_prompts']:
             for p in tracker['frame_prompts'][frame_idx]:
                 if p['type'] == 'point':
-                    tracker['points'].append([p['x'], p['y']])
-                    tracker['labels'].append(p.get('label', 1))
+                    points.append([p['x'], p['y']])
+                    labels.append(p.get('label', 1))
                 elif p['type'] == 'box':
-                    tracker['boxes'].append([p['x1'], p['y1'], p['x2'], p['y2']])
+                    boxes.append([p['x1'], p['y1'], p['x2'], p['y2']])
 
-        # Run prediction on this frame
+        # Build kwargs — only include non-empty lists
         kwargs = {}
-        if tracker['points']:
-            kwargs['points'] = tracker['points']
-        if tracker['labels']:
-            kwargs['labels'] = tracker['labels']
-        if tracker['boxes']:
-            kwargs['bboxes'] = tracker['boxes']
+        if points:
+            # Convert to float numpy arrays for reliable type handling
+            kwargs['points'] = np.array(points, dtype=np.float32)
+            kwargs['labels'] = np.array(labels, dtype=np.int32)
+        if boxes:
+            kwargs['bboxes'] = np.array(boxes, dtype=np.float32)
 
         results = model(frame, **kwargs)
 

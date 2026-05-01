@@ -3,3 +3,4 @@ numpy>=1.26
 ultralytics>=8.4.45
 opencv-python>=4.6.0
 mediapipe>=0.10.0
+git+https://github.com/ultralytics/CLIP.git

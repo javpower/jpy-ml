@@ -53,7 +53,7 @@ def jpy_sam2_predict(var_name, image_path, prompts):
     kwargs = {}
     if points:
         kwargs['points'] = points
-    if labels:
+        # labels must always accompany points
         kwargs['labels'] = labels
     if boxes:
         kwargs['bboxes'] = boxes

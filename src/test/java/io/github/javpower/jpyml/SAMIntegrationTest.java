@@ -97,9 +97,8 @@ class SAMIntegrationTest {
 
     @Test
     @Order(20)
-    @Disabled("SAM2 video tracking needs refactoring - tracker API not compatible with current implementation")
     void testSAM2VideoTracker() throws Exception {
-        String videoUrl = "solutions_ci_demo.mp4";
+        String videoUrl = "/Volumes/macEx/AI2/jp/jpy-ml/solutions_ci_demo.mp4";
 
         try (SAM2Model sam = new SAM2Model(SAM_MODEL)) {
             try (SAM2VideoTracker tracker = sam.trackVideo(videoUrl, Prompt.box(100, 100, 400, 400))) {
@@ -121,7 +120,6 @@ class SAMIntegrationTest {
 
     @Test
     @Order(30)
-    @Disabled("SAM3 text prompts require SAM3 model")
     void testSAM3TextPrompt() throws Exception {
         try (SAM3Model sam = new SAM3Model(SAM3_MODEL)) {
             SAM3Result result = sam.predictText(TEST_IMAGE, "person", "bus");
@@ -139,7 +137,6 @@ class SAMIntegrationTest {
 
     @Test
     @Order(31)
-    @Disabled("SAM3 exemplar prompts require SAM3 model")
     void testSAM3ExemplarPrompt() throws Exception {
         try (SAM3Model sam = new SAM3Model(SAM3_MODEL)) {
             BoundingBox exemplarBox = new BoundingBox(100, 100, 300, 300);
@@ -154,7 +151,6 @@ class SAMIntegrationTest {
 
     @Test
     @Order(32)
-    @Disabled("SAM3 text prompts require SAM3 model")
     void testSAM3FilterByScore() throws Exception {
         try (SAM3Model sam = new SAM3Model(SAM3_MODEL)) {
             SAM3Result result = sam.predictText(TEST_IMAGE, "person");
@@ -172,7 +168,6 @@ class SAMIntegrationTest {
 
     @Test
     @Order(33)
-    @Disabled("SAM3 requires ultralytics with SAM3 support - not available in current version")
     void testSAM3ModelClose() throws Exception {
         SAM3Model sam = new SAM3Model(SAM3_MODEL);
         assertFalse(sam.isClosed());

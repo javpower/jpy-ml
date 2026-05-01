@@ -154,7 +154,8 @@ public class SAM2Model implements AutoCloseable {
 
             engine.put(varName + "_video_path", videoPath);
             engine.put(varName + "_video_prompts", promptList);
-            engine.exec(varName + "_tracker = jpy_sam2_video_start(" + varName + ", " +
+            engine.exec("_jpy_sam2_video_model = _jpy_sam2_models['" + varName + "']");
+            engine.exec(varName + "_tracker = jpy_sam2_video_start(_jpy_sam2_video_model, " +
                     varName + "_video_path, " + varName + "_video_prompts)");
 
             return new SAM2VideoTracker(engine, varName + "_tracker");
