@@ -53,7 +53,7 @@ def jpy_mp_init():
     # Pose model may not be available
     try:
         pose_model = _download_model(_POSE_MODEL,
-            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker/float16/latest/pose_landmarker.task")
+            "https://storage.googleapis.com/mediapipe-assets/pose_landmarker.task")
         pose_options = vision.PoseLandmarkerOptions(
             base_options=python.BaseOptions(model_asset_path=pose_model),
             min_pose_detection_confidence=0.5
@@ -144,6 +144,9 @@ def jpy_mp_detect_pose(modules, image_path):
     Returns:
         dict with pose detection results
     """
+    if modules.get('pose') is None:
+        raise RuntimeError("Pose model not available (download failed)")
+
     image = mp.Image.create_from_file(image_path)
     result = modules['pose'].detect(image)
 
@@ -154,7 +157,7 @@ def jpy_mp_detect_pose(modules, image_path):
                 'x': lm.x,
                 'y': lm.y,
                 'z': lm.z,
-                'visibility': lm.visibility,
+                'visibility': lm.visibility if hasattr(lm, 'visibility') else 1.0,
             })
 
     return {

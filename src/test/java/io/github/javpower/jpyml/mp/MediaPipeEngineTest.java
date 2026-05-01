@@ -25,15 +25,13 @@ class MediaPipeEngineTest {
 
         engine = new MediaPipeEngine();
 
-        testImage = Files.createTempFile("jpy-test-mp-", ".jpg");
-        try (var in = new java.net.URL("https://ultralytics.com/images/bus.jpg").openStream()) {
-            Files.copy(in, testImage, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        }
+        testImage = projectRoot.resolve("bus.jpg");
+        Assumptions.assumeTrue(Files.exists(testImage), "Test image bus.jpg not found");
     }
 
     @AfterAll
-    static void cleanup() throws Exception {
-        if (testImage != null) Files.deleteIfExists(testImage);
+    static void cleanup() {
+        // testImage is a local file, no cleanup needed
     }
 
     @Test
@@ -47,14 +45,13 @@ class MediaPipeEngineTest {
     @Test
     @Order(2)
     void testDetectFace() throws Exception {
-        MediaPipeEngine.FaceResult result = engine.detectFace(testImage.toString());
+        MediaPipeEngine.FaceResult result = engine.detectFace("face.jpeg");
         assertNotNull(result);
         assertNotNull(result.faces());
     }
 
     @Test
     @Order(3)
-    @Disabled("Pose model not available for download")
     void testDetectPose() throws Exception {
         MediaPipeEngine.PoseResult result = engine.detectPose(testImage.toString());
         assertNotNull(result);

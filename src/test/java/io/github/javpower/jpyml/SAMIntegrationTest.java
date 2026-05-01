@@ -1,14 +1,14 @@
 package io.github.javpower.jpyml;
 
-import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonRuntime;
-import io.github.javpower.jpyml.core.PythonScriptLoader;
-import io.github.javpower.jpyml.ml.model.*;
+import io.github.javpower.jpyml.ml.model.Prompt;
+import io.github.javpower.jpyml.ml.model.SAM2Model;
+import io.github.javpower.jpyml.ml.model.SAM2VideoTracker;
+import io.github.javpower.jpyml.ml.model.SAM3Model;
 import io.github.javpower.jpyml.ml.result.*;
 import org.junit.jupiter.api.*;
 
 import java.nio.file.Path;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
