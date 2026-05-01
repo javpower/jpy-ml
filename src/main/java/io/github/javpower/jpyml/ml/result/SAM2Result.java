@@ -1,5 +1,7 @@
 package io.github.javpower.jpyml.ml.result;
 
+import io.github.javpower.jpyml.exception.InferenceException;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -33,7 +35,7 @@ public record SAM2Result(
      */
     public Mask bestMask() {
         if (masks.isEmpty()) {
-            throw new IllegalStateException("No masks in result");
+            throw new InferenceException("No masks in result");
         }
         int bestIdx = 0;
         float bestScore = scores.get(0);

@@ -1,5 +1,6 @@
 package io.github.javpower.jpyml.core;
 
+import io.github.javpower.jpyml.exception.PythonException;
 import jep.*;
 
 import java.io.Closeable;
@@ -76,7 +77,7 @@ public class PythonEngine implements Closeable {
 
     private static PythonEngine createInternal(JepConfig config) throws JepException {
         if (!PythonRuntime.isInitialized()) {
-            throw new IllegalStateException(
+            throw new PythonException(
                     "PythonRuntime not initialized. Call PythonRuntime.init() first.");
         }
 

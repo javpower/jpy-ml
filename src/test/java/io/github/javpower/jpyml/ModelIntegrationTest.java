@@ -13,7 +13,6 @@ import io.github.javpower.jpyml.ml.training.TrainingConfig;
 import io.github.javpower.jpyml.ml.training.TrainingResult;
 import io.github.javpower.jpyml.ml.validation.PerClassMetric;
 import io.github.javpower.jpyml.ml.validation.ValidationResult;
-import io.github.javpower.jpyml.ml.result.*;
 import org.junit.jupiter.api.*;
 
 import java.nio.file.Path;

@@ -1,5 +1,8 @@
 package io.github.javpower.jpyml.ml.result;
 
+import io.github.javpower.jpyml.exception.InferenceException;
+
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -36,7 +39,7 @@ public record SAM3Result(
      */
     public Mask bestMask() {
         if (masks.isEmpty()) {
-            throw new IllegalStateException("No masks in result");
+            throw new InferenceException("No masks in result");
         }
         int bestIdx = 0;
         float bestScore = scores.get(0);
@@ -63,9 +66,9 @@ public record SAM3Result(
      * Filter masks by minimum score.
      */
     public SAM3Result filterByScore(float minScore) {
-        List<Mask> filteredMasks = new java.util.ArrayList<>();
-        List<Float> filteredScores = new java.util.ArrayList<>();
-        List<Integer> filteredClassIds = new java.util.ArrayList<>();
+        List<Mask> filteredMasks = new ArrayList<>();
+        List<Float> filteredScores = new ArrayList<>();
+        List<Integer> filteredClassIds = new ArrayList<>();
 
         for (int i = 0; i < scores.size(); i++) {
             if (scores.get(i) >= minScore) {

@@ -1,5 +1,6 @@
 package io.github.javpower.jpyml.core;
 
+import io.github.javpower.jpyml.exception.PythonException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -254,7 +255,7 @@ public class PythonRuntime {
 
     private static void ensureInitialized() {
         if (!initialized.get()) {
-            throw new IllegalStateException("PythonRuntime not initialized. Call PythonRuntime.init() first.");
+            throw new PythonException("PythonRuntime not initialized. Call PythonRuntime.init() first.");
         }
     }
 
@@ -443,7 +444,7 @@ public class PythonRuntime {
                 if (totalSize > 0) {
                     int percent = (int) (downloaded * 100 / totalSize);
                     if (percent != lastPercent && percent % 10 == 0) {
-                        System.out.printf("[jpy-ml] Downloaded %d/%d MB (%d%%)%n",
+                        log.info("Downloaded {}/{} MB ({}%%)",
                                 downloaded / (1024 * 1024), totalSize / (1024 * 1024), percent);
                         lastPercent = percent;
                     }

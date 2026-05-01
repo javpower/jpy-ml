@@ -31,6 +31,7 @@ __pycache__/
 *.engine
 *.tflite
 *.mlpackage/
+*.task
 runs/
 
 # Test artifacts

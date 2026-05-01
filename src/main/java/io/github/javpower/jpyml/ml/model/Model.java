@@ -12,7 +12,6 @@ import io.github.javpower.jpyml.ml.export.ExportConfig;
 import io.github.javpower.jpyml.ml.export.ExportFormat;
 import io.github.javpower.jpyml.ml.export.ExportResult;
 import io.github.javpower.jpyml.ml.result.*;
-import io.github.javpower.jpyml.ml.result.StreamFrame;
 import io.github.javpower.jpyml.ml.training.TrainingCallback;
 import io.github.javpower.jpyml.ml.training.TrainingConfig;
 import io.github.javpower.jpyml.ml.training.TrainingResult;

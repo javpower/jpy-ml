@@ -71,6 +71,31 @@ inference, training, validation, export, and ONNX Runtime all fully wired.
 
 **Important:** GraalVM CE's JNI support is incomplete and will crash when loading Jep's native library. Always use standard OpenJDK (Temurin, Zulu, etc.).
 
+### Dependency Management
+
+**Two initialization modes:**
+
+| Mode | Method | Auto-install | Use case |
+|------|--------|--------------|----------|
+| **Auto-download** | `PythonRuntime.init()` | ✅ Yes | Production, zero Python setup |
+| **Local venv** | `PythonRuntime.init(pythonPath, jepLibPath)` | ❌ No | Development, existing Python |
+
+**Auto-download mode** (`PythonRuntime.init()`):
+- Downloads python-build-standalone automatically
+- Installs all dependencies from `requirements.txt`:
+  - `jep>=4.3.1` — JNI bridge
+  - `numpy>=1.26` — Numerical computing
+  - `ultralytics>=8.4.45` — YOLO/SAM models
+  - `opencv-python>=4.6.0` — Image processing
+  - `mediapipe>=0.10.0` — Hand/face/pose detection
+
+**Local venv mode** (`PythonRuntime.init(pythonPath, jepLibPath)`):
+- Uses existing Python installation
+- User must install dependencies manually:
+  ```bash
+  .venv/bin/pip install -r src/main/resources/requirements.txt
+  ```
+
 ---
 
 ## Maven
@@ -104,7 +129,19 @@ java -version                   # Confirm: openjdk 17.0.19 Temurin
 ### 3. Install Python dependencies
 
 ```bash
+# Basic dependencies (required)
 .venv/bin/pip install jep numpy ultralytics
+
+# Optional: OpenCV for image processing
+.venv/bin/pip install opencv-python
+
+# Optional: MediaPipe for hand/face/pose detection
+.venv/bin/pip install mediapipe
+```
+
+**Or install all at once:**
+```bash
+.venv/bin/pip install -r src/main/resources/requirements.txt
 ```
 
 ### 4. Build & Test
@@ -112,7 +149,7 @@ java -version                   # Confirm: openjdk 17.0.19 Temurin
 ```bash
 mvn clean test
 
-# Expected: Tests run: 66, Failures: 0, Errors: 0, Skipped: 5
+# Expected: Tests run: 72, Failures: 0, Errors: 0, Skipped: 6
 ```
 
 ### 5. Run Demo
@@ -628,7 +665,7 @@ engine.exec("for i in range(3): print(f'item {i}')",
 │  DetectionResult r = m.predict(img);     │
 ├──────────────────────────────────────────┤
 │  Model / ModelConfig / Result types      │
-│  (41 Java source files)                  │
+│  (54 Java source files)                  │
 ├──────────────────────────────────────────┤
 │  PythonEngine (singleton, ReadWriteLock) │
 │  SharedInterpreter + sys.path filtering  │
@@ -657,19 +694,20 @@ engine.exec("for i in range(3): print(f'item {i}')",
 
 ## Test Results
 
-All 66 tests passing (5 skipped):
+All 72 tests passing (6 skipped):
 
-| Test Suite | Tests | Description |
-|-----------|-------|-------------|
-| QuickVerifyTest | 10 | Basic Python bridge (eval, put/get, numpy, lists, dicts) |
-| PythonEngineTest | 11 | Engine features (multithreading, callbacks, modules) |
-| PythonRuntimeTest | 3 | Platform detection |
-| ModelIntegrationTest | 18 | Full YOLO integration (inference + batch + video + training + export) |
-| SAMIntegrationTest | 9 | SAM 2 interactive segmentation (4 pass, 5 skipped) |
-| TensorBufferPoolTest | 6 | Zero-copy buffer pool |
-| BoundingBoxTest | 10 | BoundingBox record |
-| KeypointTest | 5 | Keypoint record |
-| InferenceSpeedTest | 5 | InferenceSpeed record |
+| Test Suite | Tests | Pass | Skip | Description |
+|-----------|-------|------|------|-------------|
+| QuickVerifyTest | 10 | 10 | 0 | Basic Python bridge (eval, put/get, numpy, lists, dicts) |
+| PythonRuntimeTest | 3 | 3 | 0 | Platform detection |
+| ModelIntegrationTest | 18 | 18 | 0 | Full YOLO integration (inference + batch + video + training + export) |
+| SAMIntegrationTest | 9 | 4 | 5 | SAM 2 interactive segmentation |
+| TensorBufferPoolTest | 6 | 6 | 0 | Zero-copy buffer pool |
+| BoundingBoxTest | 10 | 10 | 0 | BoundingBox record |
+| KeypointTest | 5 | 5 | 0 | Keypoint record |
+| InferenceSpeedTest | 5 | 5 | 0 | InferenceSpeed record |
+| MediaPipeEngineTest | 4 | 3 | 1 | Hand/face/pose detection |
+| OpenCVEngineTest | 8 | 8 | 0 | Image processing operations |
 
 ### ModelIntegrationTest details:
 
@@ -707,6 +745,28 @@ All 66 tests passing (5 skipped):
 | testSAM3ExemplarPrompt | — | Exemplar | Skipped (needs SAM3 model) |
 | testSAM3FilterByScore | — | Text | Skipped (needs SAM3 model) |
 | testSAM3ModelClose | — | — | Skipped (needs SAM3 model) |
+
+### MediaPipeEngineTest details:
+
+| Test | Task | Result |
+|------|------|--------|
+| testDetectHands | Hand detection | 21 keypoints per hand |
+| testDetectFace | Face mesh | 468 face landmarks |
+| testDetectPose | Pose estimation | Skipped (model download issue) |
+| testClose | Lifecycle | Close works |
+
+### OpenCVEngineTest details:
+
+| Test | Operation | Result |
+|------|-----------|--------|
+| testImread | Image read | Width/height/channels |
+| testImwrite | Image write | Output file created |
+| testCvtColor | BGR2GRAY | Grayscale image |
+| testResize | Resize | Resized image |
+| testBlur | Gaussian blur | Blurred image |
+| testCanny | Edge detection | Edge image |
+| testThreshold | Threshold | Binary image |
+| testFindContours | Contours | Contour count |
 
 ---
 

@@ -80,8 +80,30 @@
 | Python | 3.13 (venv) | 项目本地 `.venv/` |
 | Jep (pip + Maven) | 4.3.1 | Java-Python JNI 桥接，Maven groupId: `org.ninia` |
 | Ultralytics | 8.4.45 | YOLOv8, YOLO11, YOLO26, RT-DETR, SAM |
+| OpenCV | 4.6.0+ | 图像处理（可选） |
+| MediaPipe | 0.10.0+ | 手部/面部/姿态检测（可选） |
 | PyTorch | 2.11.0 | CPU-only macOS ARM64 |
 | OS | macOS ARM64 (Apple Silicon) | |
+
+### 依赖管理
+
+**两种初始化模式：**
+
+| 模式 | 方法 | 自动安装 | 使用场景 |
+|------|------|----------|----------|
+| **自动下载** | `PythonRuntime.init()` | ✅ 是 | 生产环境，零配置 |
+| **本地venv** | `PythonRuntime.init(pythonPath, jepLibPath)` | ❌ 否 | 开发环境，已有Python |
+
+**自动下载模式** (`PythonRuntime.init()`):
+- 自动下载 python-build-standalone
+- 自动安装 `requirements.txt` 中的所有依赖
+
+**本地venv模式** (`PythonRuntime.init(pythonPath, jepLibPath)`):
+- 使用现有Python环境
+- 需手动安装依赖：
+  ```bash
+  .venv/bin/pip install -r src/main/resources/requirements.txt
+  ```
 
 ---
 
@@ -104,7 +126,17 @@ java -version                   # 确认: openjdk 17.0.19 Temurin
 ### 3. 安装 Python 依赖
 
 ```bash
+# 基础依赖（必须）
 .venv/bin/pip install jep numpy ultralytics
+
+# 可选：OpenCV 图像处理
+.venv/bin/pip install opencv-python
+
+# 可选：MediaPipe 手部/面部/姿态检测
+.venv/bin/pip install mediapipe
+
+# 或一次性安装所有依赖
+.venv/bin/pip install -r src/main/resources/requirements.txt
 ```
 
 ### 4. 构建与测试
@@ -112,7 +144,7 @@ java -version                   # 确认: openjdk 17.0.19 Temurin
 ```bash
 mvn clean test
 
-# 预期: Tests run: 66, Failures: 0, Errors: 0, Skipped: 5
+# 预期: Tests run: 72, Failures: 0, Errors: 0, Skipped: 6
 ```
 
 ---
