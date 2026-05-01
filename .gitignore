@@ -1,0 +1,52 @@
+# Compiled
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+*.swp
+*.swo
+*~
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ML models & data (large files)
+*.pt
+*.onnx
+*.pth
+*.weights
+*.engine
+*.tflite
+*.mlpackage/
+runs/
+
+# Test artifacts
+bus.jpg
+test_bus.jpg
+hs_err_pid*.log
+replay_pid*.log
+core.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Maven
+*.log
+
+# Build
+*.jar
+*.war
