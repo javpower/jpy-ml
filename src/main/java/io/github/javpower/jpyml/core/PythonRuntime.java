@@ -20,8 +20,8 @@ public class PythonRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(PythonRuntime.class);
     private static final String RUNTIME_DIR_NAME = ".jpy-ml";
-    private static final String PYTHON_VERSION = "3.12.6";
-    private static final String PYTHON_RELEASE_TAG = "20240909";
+    private static final String PYTHON_VERSION = "3.13.3";
+    private static final String PYTHON_RELEASE_TAG = "20250317";
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
     private static Path runtimeRoot;
     private static Path pythonHome;

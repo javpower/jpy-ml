@@ -6,6 +6,8 @@ import io.github.javpower.jpyml.exception.InferenceException;
 import io.github.javpower.jpyml.exception.ModelException;
 import io.github.javpower.jpyml.exception.TrainingException;
 import io.github.javpower.jpyml.exception.ValidationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import io.github.javpower.jpyml.ml.export.ExportConfig;
 import io.github.javpower.jpyml.ml.export.ExportFormat;
 import io.github.javpower.jpyml.ml.export.ExportResult;
@@ -40,6 +42,7 @@ import java.util.function.Consumer;
  */
 public class Model implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(Model.class);
     private static final AtomicLong idCounter = new AtomicLong(0);
 
     private final long id;
@@ -62,6 +65,7 @@ public class Model implements AutoCloseable {
 
         try {
             engine = PythonEngine.getInstance();
+            log.info("Loading model: {} (task={})", modelPath, overrideTask);
 
             // Load Python helper scripts (idempotent)
             PythonScriptLoader.ensureLoaded(engine, "_jpy_init.py");
@@ -96,6 +100,7 @@ public class Model implements AutoCloseable {
             if (info.get("layers") != null) layers = ((Number) info.get("layers")).intValue();
 
             this.modelInfo = new ModelInfo(taskType, classNames, classNames.size(), params, layers);
+            log.info("Model loaded: {} classes, {} params, {} layers", classNames.size(), params, layers);
 
             // Keep a reference to the actual Python var for this model
             engine.exec("_jpy_mv" + this.id + " = _jpy_models['" + escapePythonString(detectedVar) + "']");
@@ -773,6 +778,7 @@ public class Model implements AutoCloseable {
     public void close() {
         if (!closed) {
             closed = true;
+            log.info("Closing model: {}", modelPath);
             try {
                 engine.exec("_jpy_mv" + id + " = None");
                 engine.exec("_jpy_pr" + id + " = None");

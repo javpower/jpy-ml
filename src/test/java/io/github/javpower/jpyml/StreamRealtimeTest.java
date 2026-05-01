@@ -6,6 +6,8 @@ import io.github.javpower.jpyml.ml.model.ModelConfig;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import org.junit.jupiter.api.condition.DisabledIf;
+
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
@@ -16,7 +18,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@DisabledIf("isHeadless")
 public class StreamRealtimeTest {
+
+    static boolean isHeadless() {
+        return GraphicsEnvironment.isHeadless();
+    }
 
     private static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
     private static final String MODEL_PATH = "yolov8n.pt"; // 按实际路径调整

@@ -4,6 +4,8 @@ import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
 import io.github.javpower.jpyml.exception.InferenceException;
 import jep.JepException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,7 @@ import java.util.Map;
  */
 public class MediaPipeEngine implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(MediaPipeEngine.class);
     private final PythonEngine engine;
     private boolean initialized = false;
     private boolean closed = false;
@@ -32,6 +35,7 @@ public class MediaPipeEngine implements AutoCloseable {
 
     private void ensureInitialized() throws JepException {
         if (!initialized) {
+            log.info("Initializing MediaPipe modules");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_mediapipe.py");
             engine.exec("_jpy_mp_modules = jpy_mp_init()");
             initialized = true;
@@ -166,6 +170,7 @@ public class MediaPipeEngine implements AutoCloseable {
     public void close() {
         if (!closed) {
             closed = true;
+            log.info("Closing MediaPipeEngine");
             try {
                 engine.exec("_jpy_mp_modules = None");
             } catch (Exception ignored) {

@@ -1,7 +1,5 @@
 """Streaming inference helper for jpy-ml — chunk-based video/webcam inference."""
 
-import cv2
-
 _jpy_stream_results = None
 _jpy_stream_exhausted = False
 _jpy_stream_frame_index = 0
@@ -38,6 +36,7 @@ def jpy_stream_next(task_type, chunk_size=10, annotate=False):
                 'frame_index': _jpy_stream_frame_index,
             }
             if annotate:
+                import cv2
                 annotated = r.plot()  # numpy BGR image
                 _, buf = cv2.imencode('.jpg', annotated)
                 entry['image'] = buf.tobytes()

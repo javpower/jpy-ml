@@ -8,6 +8,7 @@ import io.github.javpower.jpyml.ml.result.*;
 import jep.JepException;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * SAM 3 (Segment Anything Model 3) for concept-level segmentation.
@@ -32,7 +33,7 @@ import java.util.*;
  */
 public class SAM3Model implements AutoCloseable {
 
-    private static long idCounter = 0;
+    private static final AtomicLong idCounter = new AtomicLong(0);
 
     private final long id;
     private final String varName;
@@ -47,7 +48,7 @@ public class SAM3Model implements AutoCloseable {
      * @throws ModelException if the model fails to load
      */
     public SAM3Model(String modelPath) throws ModelException {
-        this.id = idCounter++;
+        this.id = idCounter.getAndIncrement();
         this.varName = "_jpy_sam3_" + this.id;
         this.modelPath = modelPath;
 

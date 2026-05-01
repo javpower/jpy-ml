@@ -58,7 +58,7 @@ public class SAM2VideoTracker implements AutoCloseable {
 
             engine.put(trackerVar + "_prompt", pm);
             engine.put(trackerVar + "_frame", frameIndex);
-            engine.exec(trackerVar + ".add_prompt(" + trackerVar + "_frame, " + trackerVar + "_prompt)");
+            engine.exec("jpy_sam2_video_add_prompt(" + trackerVar + ", " + trackerVar + "_frame, " + trackerVar + "_prompt)");
         } catch (JepException e) {
             throw new InferenceException("Failed to add prompt to frame " + frameIndex, e);
         }

@@ -198,18 +198,16 @@ def jpy_extract_result_ndarray(result, task_type, buffers=None):
             conf_buf = buf_conf.getData()
             cls_buf = buf_cls.getData()
 
-            # Write data to buffers using numpy's tobytes()
+            # Write data to buffers using struct bulk copy
+            import struct
             xyxy_bytes = xyxy_np.tobytes()
             conf_bytes = conf_np.tobytes()
             cls_bytes = cls_np.tobytes()
 
-            # Copy bytes to Java buffers
-            for i in range(len(xyxy_bytes)):
-                xyxy_buf.put(i, xyxy_bytes[i])
-            for i in range(len(conf_bytes)):
-                conf_buf.put(i, conf_bytes[i])
-            for i in range(len(cls_bytes)):
-                cls_buf.put(i, cls_bytes[i])
+            # Bulk write: pack as float/int arrays directly into buffer
+            struct.pack_into(f'<{len(xyxy_np.flat)}f', xyxy_buf, 0, *xyxy_np.flat)
+            struct.pack_into(f'<{len(conf_np)}f', conf_buf, 0, *conf_np)
+            struct.pack_into(f'<{len(cls_np)}i', cls_buf, 0, *cls_np)
 
             data['boxes_count'] = n
             data['boxes_ndarray'] = True

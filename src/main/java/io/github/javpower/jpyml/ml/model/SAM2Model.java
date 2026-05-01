@@ -8,6 +8,7 @@ import io.github.javpower.jpyml.ml.result.*;
 import jep.JepException;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * SAM 2 (Segment Anything Model 2) for interactive promptable segmentation.
@@ -31,7 +32,7 @@ import java.util.*;
  */
 public class SAM2Model implements AutoCloseable {
 
-    private static long idCounter = 0;
+    private static final AtomicLong idCounter = new AtomicLong(0);
 
     private final long id;
     private final String varName;
@@ -46,7 +47,7 @@ public class SAM2Model implements AutoCloseable {
      * @throws ModelException if the model fails to load
      */
     public SAM2Model(String modelPath) throws ModelException {
-        this.id = idCounter++;
+        this.id = idCounter.getAndIncrement();
         this.varName = "_jpy_sam2_" + this.id;
         this.modelPath = modelPath;
 
@@ -99,6 +100,8 @@ public class SAM2Model implements AutoCloseable {
                     pm.put("type", "text");
                     pm.put("text", text.text());
                     promptList.add(pm);
+                } else if (p instanceof Prompt.Mask) {
+                    throw new InferenceException("Mask prompts are not supported by SAM 2. Use Point or Box prompts.");
                 }
             }
 

@@ -8,6 +8,9 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Thread-safe Python engine backed by Jep.
  * <p>
@@ -26,6 +29,7 @@ import java.util.function.Consumer;
  */
 public class PythonEngine implements Closeable {
 
+    private static final Logger log = LoggerFactory.getLogger(PythonEngine.class);
     private static final ReadWriteLock lock = new ReentrantReadWriteLock();
     private static PythonEngine instance;
     private static boolean jepConfigured = false;
@@ -44,6 +48,7 @@ public class PythonEngine implements Closeable {
      */
     public static synchronized PythonEngine getInstance() throws JepException {
         if (instance == null || instance.closed) {
+            log.info("Creating PythonEngine instance");
             instance = createInternal(new JepConfig());
         }
         return instance;
@@ -54,6 +59,7 @@ public class PythonEngine implements Closeable {
      * Use this if you need a fresh Python namespace.
      */
     public static synchronized PythonEngine create() throws JepException {
+        log.info("Creating new PythonEngine (replacing previous)");
         return create(new JepConfig());
     }
 
@@ -101,6 +107,7 @@ public class PythonEngine implements Closeable {
         }
         Jep interp = new SharedInterpreter();
         sharedInterpCreated = true;
+        log.info("SharedInterpreter created successfully");
 
         // Inject venv site-packages into sys.path at high priority
         // and filter out system Homebrew site-packages that may conflict with venv packages
@@ -324,6 +331,7 @@ public class PythonEngine implements Closeable {
     public void close() {
         if (!closed && interpreter != null) {
             closed = true;
+            log.info("Closing PythonEngine");
             try {
                 interpreter.close();
             } catch (Exception ignored) {

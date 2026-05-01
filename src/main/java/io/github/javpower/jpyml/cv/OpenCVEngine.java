@@ -4,6 +4,8 @@ import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
 import io.github.javpower.jpyml.exception.InferenceException;
 import jep.JepException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,7 @@ import java.util.Map;
  */
 public class OpenCVEngine {
 
+    private static final Logger log = LoggerFactory.getLogger(OpenCVEngine.class);
     private final PythonEngine engine;
     private boolean scriptsLoaded = false;
 
@@ -32,6 +35,7 @@ public class OpenCVEngine {
 
     private void ensureScripts() throws JepException {
         if (!scriptsLoaded) {
+            log.info("Loading OpenCV scripts");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_opencv.py");
             scriptsLoaded = true;
         }
@@ -192,6 +196,86 @@ public class OpenCVEngine {
             return new ContourResult(count, contours);
         } catch (JepException e) {
             throw new InferenceException("Failed to find contours", e);
+        }
+    }
+
+    /**
+     * Apply threshold to a grayscale version of the image.
+     *
+     * @param sourcePath source image path
+     * @param outputPath output image path
+     * @param thresh     threshold value (0-255)
+     * @param maxval     maximum value to use with THRESH_BINARY (typically 255)
+     * @return output path
+     */
+    public String threshold(String sourcePath, String outputPath, double thresh, double maxval)
+            throws InferenceException {
+        return threshold(sourcePath, outputPath, thresh, maxval, "THRESH_BINARY");
+    }
+
+    /**
+     * Apply threshold with custom type.
+     *
+     * @param sourcePath  source image path
+     * @param outputPath  output image path
+     * @param thresh      threshold value (0-255)
+     * @param maxval      maximum value
+     * @param threshType  threshold type (e.g., "THRESH_BINARY", "THRESH_BINARY_INV", "THRESH_OTSU")
+     * @return output path
+     */
+    public String threshold(String sourcePath, String outputPath, double thresh, double maxval, String threshType)
+            throws InferenceException {
+        try {
+            ensureScripts();
+            engine.put("_jpy_cv_src", sourcePath);
+            engine.put("_jpy_cv_out", outputPath);
+            engine.put("_jpy_cv_thresh", thresh);
+            engine.put("_jpy_cv_maxval", maxval);
+            engine.put("_jpy_cv_ttype", threshType);
+            engine.exec("_jpy_cv_result = jpy_threshold(_jpy_cv_src, _jpy_cv_out, _jpy_cv_thresh, _jpy_cv_maxval, _jpy_cv_ttype)");
+            return engine.eval("_jpy_cv_result");
+        } catch (JepException e) {
+            throw new InferenceException("Failed to apply threshold", e);
+        }
+    }
+
+    /**
+     * Apply morphological operation.
+     *
+     * @param sourcePath  source image path
+     * @param outputPath  output image path
+     * @param operation   operation type (e.g., "ERODE", "DILATE", "OPEN", "CLOSE")
+     * @param kernelSize  kernel size (must be odd)
+     * @return output path
+     */
+    public String morphology(String sourcePath, String outputPath, String operation, int kernelSize)
+            throws InferenceException {
+        return morphology(sourcePath, outputPath, operation, kernelSize, 1);
+    }
+
+    /**
+     * Apply morphological operation with iterations.
+     *
+     * @param sourcePath  source image path
+     * @param outputPath  output image path
+     * @param operation   operation type (e.g., "ERODE", "DILATE", "OPEN", "CLOSE")
+     * @param kernelSize  kernel size (must be odd)
+     * @param iterations  number of iterations
+     * @return output path
+     */
+    public String morphology(String sourcePath, String outputPath, String operation, int kernelSize, int iterations)
+            throws InferenceException {
+        try {
+            ensureScripts();
+            engine.put("_jpy_cv_src", sourcePath);
+            engine.put("_jpy_cv_out", outputPath);
+            engine.put("_jpy_cv_op", operation);
+            engine.put("_jpy_cv_ksize", kernelSize);
+            engine.put("_jpy_cv_iter", iterations);
+            engine.exec("_jpy_cv_result = jpy_morphology(_jpy_cv_src, _jpy_cv_out, _jpy_cv_op, _jpy_cv_ksize, _jpy_cv_iter)");
+            return engine.eval("_jpy_cv_result");
+        } catch (JepException e) {
+            throw new InferenceException("Failed to apply morphology", e);
         }
     }
 
