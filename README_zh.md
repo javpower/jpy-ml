@@ -41,8 +41,17 @@
 ### SAM 2 — 交互式分割
 - **点/框提示** — 通过点击或绘制边界框分割对象
 - **多提示组合** — 组合正向和负向提示
+- **视频跟踪** — 利用时序记忆在视频帧间跟踪目标
 - **SAM2Model** — 专用 SAM 2 推理模型类
 - **SAM2Result** — 带 mask 和置信度的类型化结果
+- **SAM2VideoTracker** — 视频目标跟踪，支持逐帧提示
+
+### SAM 3 — 概念级分割
+- **文本提示** — 使用自然语言分割目标（"person"、"red car"）
+- **图像样本** — 使用参考图像区域查找相似目标
+- **SAM3Model** — 专用 SAM 3 推理模型类
+- **SAM3Result** — 带 mask、置信度和类别的类型化结果
+- **CLIP 集成** — 使用 CLIP 实现文本到 mask 的语义理解
 
 ### OpenCV 集成
 - **OpenCVEngine** — OpenCV 操作的 Java API
@@ -55,7 +64,7 @@
 ### MediaPipe 集成
 - **MediaPipeEngine** — MediaPipe 任务的 Java API
 - **手部追踪** — 检测手部 21 个关键点
-- **面部网格** — 检测面部 468 个关键点
+- **面部网格** — 检测面部 478 个关键点
 - **姿态估计** — 检测身体 33 个关键点
 
 ---
@@ -357,7 +366,7 @@ try (Model model = new Model("yolov8n.pt")) {
 │  DetectionResult r = m.predict(img);     │
 ├──────────────────────────────────────────┤
 │  Model / ModelConfig / Result 类型       │
-│  (41 个 Java 源文件)                     │
+│  (55 个 Java 源文件)                     │
 ├──────────────────────────────────────────┤
 │  PythonEngine (单例, ReadWriteLock)      │
 │  SharedInterpreter + sys.path 过滤       │
@@ -365,9 +374,11 @@ try (Model model = new Model("yolov8n.pt")) {
 │  Jep 4.3.1 (JNI 桥接)                   │
 │  libjep.jnilib 来自 pip install jep      │
 ├──────────────────────────────────────────┤
-│  Python 辅助脚本 (6 个 .py 文件)         │
+│  Python 辅助脚本 (12 个 .py 文件)        │
 │  jpy_load_model / jpy_extract_result /   │
-│  jpy_train / jpy_export / jpy_validate   │
+│  jpy_train / jpy_export / jpy_validate / │
+│  jpy_sam2 / jpy_sam3 / jpy_opencv /      │
+│  jpy_mediapipe / jpy_streaming / ...     │
 ├──────────────────────────────────────────┤
 │  CPython 3.13 (.venv)                    │
 │  Ultralytics 8.4.45 + PyTorch 2.11       │
@@ -378,19 +389,30 @@ try (Model model = new Model("yolov8n.pt")) {
 
 ## 测试覆盖
 
-全部 41 个测试通过：
+全部 89 个测试通过（0 跳过）：
 
 | 测试套件 | 数量 | 说明 |
 |---------|------|------|
 | QuickVerifyTest | 10 | 基础 Python 桥接（eval、put/get、numpy、列表、字典） |
 | PythonEngineTest | 11 | 引擎特性（多线程、回调、模块） |
 | PythonRuntimeTest | 3 | 平台检测 |
-| ModelIntegrationTest | 17 | 完整 YOLO 集成（推理 + 批量 + 视频 + 训练 + 导出） |
+| ModelIntegrationTest | 18 | 完整 YOLO 集成（推理 + 批量 + 视频 + 训练 + 导出） |
+| SAMIntegrationTest | 9 | SAM 2/3 集成（点/框/视频/文本/样本） |
+| TensorBufferPoolTest | 6 | 零拷贝缓冲池 |
+| BoundingBoxTest | 10 | BoundingBox 记录类 |
+| KeypointTest | 5 | Keypoint 记录类 |
+| InferenceSpeedTest | 5 | InferenceSpeed 记录类 |
+| MediaPipeEngineTest | 4 | 手部/面部/姿态检测 |
+| OpenCVEngineTest | 8 | 图像处理操作 |
 
 覆盖范围：
 - 5 种任务类型：检测、分割、分类、姿态、OBB
 - PyTorch 和 ONNX 模型推理
 - YOLOv8 和 YOLO26 模型
+- SAM 2 交互式分割 + 视频跟踪
+- SAM 3 文本提示 + 图像样本分割
+- MediaPipe 手部（21 关键点）、面部（478 关键点）、姿态（33 关键点）
+- OpenCV 图像处理（颜色转换、滤波、边缘检测、轮廓、形态学）
 - 训练（含 epoch 回调和指标）
 - 验证（含每类别 mAP）
 - ONNX 导出
@@ -432,87 +454,35 @@ try (Model model = new Model("yolov8n.pt")) {
 
 jpy-ml 的定位是通用 Java-Python ML 桥接框架。YOLO 是第一个引擎 —— 更多引擎正在路上。
 
-### 近期
-- [ ] PyTorch tensor 零拷贝桥接，实现高性能数据传输
+### 已完成
 - [x] 批量推理 API（`model.predict(List<String>)`）
 - [x] 摄像头/视频流实时推理
 - [x] python-build-standalone 自动下载（终端用户无需安装 Python）
+- [x] PyTorch tensor 零拷贝桥接（`TensorBufferPool` + `RawDetectionResult`）
+- [x] GPU 显存管理与模型预热 API
+- [x] SAM 2 交互式分割（点/框提示）
+- [x] SAM 2 视频跟踪（逐帧提示 + 时序记忆）
+- [x] SAM 3 概念级分割（文本提示 + 图像样本）
+- [x] OpenCV 集成（图像处理）
+- [x] MediaPipe 集成（手部/面部/姿态）
+- [x] SLF4J 日志框架
+- [x] 异常层次（`JpyMlException` 基类）
+- [x] CI/CD（GitHub Actions）
+
+### 近期
 - [ ] Windows / Linux CI 测试
+- [ ] 所有值类型的单元测试
 
 ### 计划中的 ML 引擎
-
-#### SAM 2 — 交互式提示分割
-
-[SAM 2](https://ai.meta.com/sam2/)（Segment Anything Model 2）由 Meta 开发，是与 YOLO 完全不同的分割范式。YOLO 自动检测所有目标，而 SAM 2 则根据你的**交互式提示**精确分割你指定的目标：
-
-| 提示类型 | 说明 | 示例 |
-|---------|------|------|
-| 点提示 | 点击某个位置，分割该位置的物体 | "分割 (100, 200) 处的物体" |
-| 框提示 | 绘制边界框，分割框内的物体 | "分割 [50,50,300,400] 内的区域" |
-| 掩码提示 | 基于已有掩码进行精细化分割 | "将此掩码扩展以包含尾部" |
-
-**视频目标跟踪** — SAM 2 的核心能力：在第 1 帧中标记一个物体，模型会利用时序记忆在整个视频中持续跟踪该目标。支持跨帧添加/移除提示进行修正。
-
-**计划 API：**
-```java
-// 图像提示分割
-SAM2Model sam = new SAM2Model("sam2_b.pt");
-SAM2Result result = sam.predict("photo.jpg",
-    Prompt.point(100, 200),          // 分割该位置的物体
-    Prompt.point(300, 400, Label.NEGATIVE)  // 排除该区域
-);
-
-// 视频目标跟踪
-SAM2VideoTracker tracker = sam.trackVideo("video.mp4");
-tracker.addPrompt(0, Prompt.box(50, 50, 300, 400));  // 在第 0 帧标记目标
-SAM2VideoMask mask = tracker.propagate();              // 跟踪到所有帧
-```
-
-**模型：** `sam2_t.pt`、`sam2_s.pt`、`sam2_b.pt`、`sam2_l.pt`、`sam2.1_t/s/b/l.pt`
-**限制：** 仅推理，不支持训练和导出。需要包含 SAM2 模块的 ultralytics 版本。
-
-#### SAM 3 — 概念级分割
-
-[SAM 3](https://ai.meta.com/blog/segment-anything-announcements/) 将分割能力提升到概念层面。不需要手动点击标注，直接用**自然语言**或**视觉样本**描述你想要分割的目标：
-
-| 模式 | 输入 | 说明 |
-|------|------|------|
-| 文本提示 | "person"、"red car"、"bus" | 找到并分割所有匹配该概念的目标实例 |
-| 图像样本 | 提供参考物体的边界框 | 在目标图像中找到相似物体 |
-| 语义分割 | 无需提示 | 自动分割所有目标并进行语义标注 |
-
-这解锁了 SAM 2 无法实现的应用场景：无需逐一点击就能"找到图中所有的车"，或者跨图像"找到和这个物体相似的目标"。
-
-**计划 API：**
-```java
-SAM3Model sam = new SAM3Model("sam3.pt");
-
-// 基于文本的概念分割
-SAM3Result result = sam.predict("street.jpg",
-    Prompt.text("person")     // 分割所有行人
-);
-
-// 基于图像样本："找到类似的目标"
-SAM3Result result = sam.predict("target.jpg",
-    Prompt.exemplar("reference.jpg", BoundingBox.of(10, 20, 200, 300))
-);
-```
-
-**模型：** `sam3.pt`（3.45 GB，需申请 HuggingFace 权重访问）
-**要求：** ultralytics 8.3.237+、PyTorch 2.1+
-**限制：** 仅推理，权重文件不会自动下载。
 
 #### 其他引擎
 - [ ] **Transformers (HuggingFace)** — NLP、文本生成、翻译、向量嵌入
 - [ ] **Whisper** — 语音识别、语音转文字
 - [ ] **Stable Diffusion / FLUX** — 图像生成、局部重绘、ControlNet
 - [ ] **DeepSeek / LLM** — 大语言模型推理
-- [ ] **OpenCV** — 传统计算机视觉流水线
-- [ ] **MediaPipe** — 手部追踪、人脸检测、手势识别
 
 ### 基础设施
 - [ ] 异步训练实时流式回调
-- [ ] GPU 显存管理与模型预热 API
 - [ ] 模型仓库 / Hub 集成（从 URL 下载）
 - [ ] Spring Boot Starter 自动配置
 - [ ] GraalVM Native Image 支持

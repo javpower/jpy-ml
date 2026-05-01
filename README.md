@@ -39,8 +39,17 @@ inference, training, validation, export, and ONNX Runtime all fully wired.
 ### SAM 2 — Interactive Segmentation
 - **Point/Box Prompts** — segment objects by clicking or drawing bounding boxes
 - **Multiple Prompts** — combine positive and negative prompts
+- **Video Tracking** — track objects across video frames with temporal memory
 - **SAM2Model** — dedicated model class for SAM 2 inference
 - **SAM2Result** — typed result with masks and confidence scores
+- **SAM2VideoTracker** — video object tracking with per-frame prompts
+
+### SAM 3 — Concept-Level Segmentation
+- **Text Prompts** — segment objects using natural language ("person", "red car")
+- **Image Exemplars** — find similar objects using a reference image region
+- **SAM3Model** — dedicated model class for SAM 3 inference
+- **SAM3Result** — typed result with masks, scores, and class IDs
+- **CLIP Integration** — uses CLIP for text-to-mask semantic understanding
 
 ### OpenCV Integration
 - **OpenCVEngine** — Java API for common OpenCV operations
@@ -53,7 +62,7 @@ inference, training, validation, export, and ONNX Runtime all fully wired.
 ### MediaPipe Integration
 - **MediaPipeEngine** — Java API for MediaPipe tasks
 - **Hand Tracking** — detect hands with 21 keypoints
-- **Face Mesh** — detect face landmarks (468 points)
+- **Face Mesh** — detect face landmarks (478 points)
 - **Pose Estimation** — detect body pose with 33 keypoints
 
 ---
@@ -88,6 +97,7 @@ inference, training, validation, export, and ONNX Runtime all fully wired.
   - `ultralytics>=8.4.45` — YOLO/SAM models
   - `opencv-python>=4.6.0` — Image processing
   - `mediapipe>=0.10.0` — Hand/face/pose detection
+  - `git+https://github.com/ultralytics/CLIP.git` — CLIP model for SAM 3 text prompts
 
 **Local venv mode** (`PythonRuntime.init(pythonPath, jepLibPath)`):
 - Uses existing Python installation
@@ -149,7 +159,7 @@ java -version                   # Confirm: openjdk 17.0.19 Temurin
 ```bash
 mvn clean test
 
-# Expected: Tests run: 72, Failures: 0, Errors: 0, Skipped: 6
+# Expected: Tests run: 89, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 ### 5. Run Demo
@@ -196,7 +206,6 @@ jpy-ml/
 │   ├── core/                           # Engine layer
 │   │   ├── PythonRuntime.java          # Python environment manager
 │   │   ├── PythonEngine.java           # Jep bridge (singleton, ReadWriteLock)
-│   │   ├── PythonModule.java           # Isolated module context (@Deprecated)
 │   │   └── PythonScriptLoader.java     # Thread-safe script loader
 │   ├── exception/                      # Custom exceptions
 │   │   ├── JpyMlException.java         # Base exception
@@ -271,6 +280,9 @@ jpy-ml/
     ├── PythonRuntimeTest.java           # Platform detection (3 cases)
     ├── ModelIntegrationTest.java        # Full YOLO integration (18 cases)
     ├── SAMIntegrationTest.java          # SAM 2/3 integration (9 cases)
+    ├── OpenCVEngineTest.java            # OpenCV operations (8 cases)
+    ├── MediaPipeEngineTest.java         # Hand/face/pose detection (4 cases)
+    ├── StreamRealtimeTest.java          # Real-time stream tests
     └── ml/result/                       # Unit tests
         ├── TensorBufferPoolTest.java    # Buffer pool tests (6 cases)
         ├── BoundingBoxTest.java         # BoundingBox tests (10 cases)
@@ -582,6 +594,47 @@ SAM2Result result = sam.predict("photo.jpg",
 );
 ```
 
+### SAM 2 — Video Tracking
+
+```java
+try (SAM2Model sam = new SAM2Model("sam2.1_t.pt")) {
+    // Start tracking with initial bounding box
+    try (SAM2VideoTracker tracker = sam.trackVideo("video.mp4",
+            Prompt.box(100, 100, 400, 400))) {
+
+        // Add more prompts at specific frames
+        tracker.addPrompt(10, Prompt.point(300, 200));
+
+        // Propagate through all frames
+        SAM2VideoResult result = tracker.propagate();
+        System.out.println("Tracked " + result.trackedFrameCount() + " frames");
+    }
+}
+```
+
+### SAM 3 — Concept-Level Segmentation
+
+```java
+// Text-based concept segmentation
+try (SAM3Model sam = new SAM3Model("sam3.pt")) {
+    SAM3Result result = sam.predictText("street.jpg", "person", "bus");
+
+    for (Mask mask : result.getMasks()) {
+        System.out.println("Mask: " + mask.getPointCount() + " points");
+    }
+
+    // Filter by confidence score
+    SAM3Result filtered = result.filterByScore(0.5f);
+}
+
+// Image exemplar: "find things like this"
+try (SAM3Model sam = new SAM3Model("sam3.pt")) {
+    BoundingBox exemplarBox = new BoundingBox(10, 20, 200, 300);
+    SAM3Result result = sam.predictExemplar("target.jpg", "reference.jpg",
+        exemplarBox);
+}
+```
+
 ### OpenCV — Image Processing
 
 ```java
@@ -665,7 +718,7 @@ engine.exec("for i in range(3): print(f'item {i}')",
 │  DetectionResult r = m.predict(img);     │
 ├──────────────────────────────────────────┤
 │  Model / ModelConfig / Result types      │
-│  (54 Java source files)                  │
+│  (55 Java source files)                  │
 ├──────────────────────────────────────────┤
 │  PythonEngine (singleton, ReadWriteLock) │
 │  SharedInterpreter + sys.path filtering  │
@@ -694,19 +747,20 @@ engine.exec("for i in range(3): print(f'item {i}')",
 
 ## Test Results
 
-All 72 tests passing (6 skipped):
+All 89 tests passing (0 skipped):
 
 | Test Suite | Tests | Pass | Skip | Description |
 |-----------|-------|------|------|-------------|
 | QuickVerifyTest | 10 | 10 | 0 | Basic Python bridge (eval, put/get, numpy, lists, dicts) |
+| PythonEngineTest | 11 | 11 | 0 | Engine features (threads, callbacks, modules) |
 | PythonRuntimeTest | 3 | 3 | 0 | Platform detection |
 | ModelIntegrationTest | 18 | 18 | 0 | Full YOLO integration (inference + batch + video + training + export) |
-| SAMIntegrationTest | 9 | 4 | 5 | SAM 2 interactive segmentation |
+| SAMIntegrationTest | 9 | 9 | 0 | SAM 2/3 integration (point/box/video/text/exemplar) |
 | TensorBufferPoolTest | 6 | 6 | 0 | Zero-copy buffer pool |
 | BoundingBoxTest | 10 | 10 | 0 | BoundingBox record |
 | KeypointTest | 5 | 5 | 0 | Keypoint record |
 | InferenceSpeedTest | 5 | 5 | 0 | InferenceSpeed record |
-| MediaPipeEngineTest | 4 | 3 | 1 | Hand/face/pose detection |
+| MediaPipeEngineTest | 4 | 4 | 0 | Hand/face/pose detection |
 | OpenCVEngineTest | 8 | 8 | 0 | Image processing operations |
 
 ### ModelIntegrationTest details:
@@ -740,19 +794,19 @@ All 72 tests passing (6 skipped):
 | testSAM2BoxPrompt | sam2.1_t.pt | Box(100,100,400,400) | 1 mask |
 | testSAM2MultiplePrompts | sam2.1_t.pt | Point + Negative Point | 1 mask |
 | testSAM2ModelClose | sam2.1_t.pt | — | Close lifecycle works |
-| testSAM2VideoTracker | — | — | Skipped (needs refactoring) |
-| testSAM3TextPrompt | — | Text | Skipped (needs SAM3 model) |
-| testSAM3ExemplarPrompt | — | Exemplar | Skipped (needs SAM3 model) |
-| testSAM3FilterByScore | — | Text | Skipped (needs SAM3 model) |
-| testSAM3ModelClose | — | — | Skipped (needs SAM3 model) |
+| testSAM2VideoTracker | sam2.1_t.pt | Box + Point | Video tracking, frame-by-frame |
+| testSAM3TextPrompt | sam3.pt | Text("person","bus") | Concept segmentation with CLIP |
+| testSAM3ExemplarPrompt | sam3.pt | Image exemplar | Exemplar-based segmentation |
+| testSAM3FilterByScore | sam3.pt | Text("person") | Score filtering works |
+| testSAM3ModelClose | sam3.pt | — | Close lifecycle works |
 
 ### MediaPipeEngineTest details:
 
 | Test | Task | Result |
 |------|------|--------|
 | testDetectHands | Hand detection | 21 keypoints per hand |
-| testDetectFace | Face mesh | 468 face landmarks |
-| testDetectPose | Pose estimation | Skipped (model download issue) |
+| testDetectFace | Face mesh | 478 face landmarks |
+| testDetectPose | Pose estimation | 33 pose landmarks |
 | testClose | Lifecycle | Close works |
 
 ### OpenCVEngineTest details:
@@ -829,6 +883,8 @@ jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engin
 - [x] PyTorch tensor zero-copy bridge (`TensorBufferPool` + `RawDetectionResult`)
 - [x] GPU memory management and model warmup APIs
 - [x] SAM 2 interactive segmentation (point/box prompts)
+- [x] SAM 2 video tracking (per-frame prompts with temporal memory)
+- [x] SAM 3 concept-level segmentation (text prompts + image exemplars)
 - [x] OpenCV integration (image processing)
 - [x] MediaPipe integration (hand/face/pose)
 - [x] SLF4J logging framework
@@ -836,36 +892,10 @@ jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engin
 - [x] CI/CD (GitHub Actions)
 
 ### Next
-- [ ] SAM 2 video tracking (refactoring needed)
-- [ ] SAM 3 concept-level segmentation (needs model download)
 - [ ] Windows / Linux CI testing
 - [ ] Unit tests for all value types
 
 ### Planned ML Engines
-
-#### SAM 3 — Concept-Level Segmentation
-
-[SAM 3](https://ai.meta.com/blog/segment-anything-announcements/) takes segmentation to the concept level. Instead of pointing at objects, describe **what** you want segmented using natural language or visual exemplars:
-
-| Mode | Input | Description |
-|------|-------|-------------|
-| Text Prompt | "person", "red car", "bus" | Find and segment all instances matching the concept |
-| Image Exemplar | Provide bounding box of reference object | Find similar objects in the target image |
-
-**API (implemented, needs SAM3 model):**
-```java
-SAM3Model sam = new SAM3Model("sam3_t.pt");
-
-// Text-based concept segmentation
-SAM3Result result = sam.predictText("street.jpg", "person", "bus");
-
-// Image exemplar: "find things like this"
-SAM3Result result = sam.predictExemplar("target.jpg", "reference.jpg",
-    new BoundingBox(10, 20, 200, 300));
-```
-
-**Models:** `sam3_t.pt`, `sam3_s.pt`, `sam3_b.pt` (from HuggingFace or ModelScope)
-**Requirements:** ultralytics 8.4.45+, PyTorch 2.1+
 
 #### Other Engines
 - [ ] **Transformers (HuggingFace)** — NLP, text generation, translation, embeddings
