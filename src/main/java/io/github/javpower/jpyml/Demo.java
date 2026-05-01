@@ -6,7 +6,8 @@ import io.github.javpower.jpyml.ml.result.DetectionResult;
 import io.github.javpower.jpyml.ml.result.InferenceResult;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonRuntime;
-import io.github.javpower.jpyml.ml.result.*;
+
+import java.util.List;
 
 /**
  * Quick demo: run with {@code mvn compile exec:java -Dexec.mainClass=io.github.javpower.jpyml.Demo}
@@ -16,8 +17,11 @@ public class Demo {
     public static void main(String[] args) throws Exception {
         System.out.println("=== jpy-ml Demo ===\n");
 
-        // 1. Initialize Python runtime (downloads Python on first run)
+        // 1. Initialize Python runtime
+        //    Production mode: auto-downloads python-build-standalone on first run
+        //    Dev mode: PythonRuntime.init(pythonPath, jepLibPath) with local venv
         PythonRuntime.init();
+        PythonRuntime.ensurePackages("ultralytics");
 
         // 2. Basic Python usage
         System.out.println("--- Basic Python ---");
@@ -44,6 +48,7 @@ public class Demo {
                 System.out.println("Task: " + yolo.getTaskType());
                 System.out.println("Classes: " + yolo.getClassNames());
 
+                // Single image
                 InferenceResult result = yolo.predict(imagePath);
                 System.out.println("Source: " + result.getSourcePath());
                 System.out.println("Speed: " + result.getSpeed());
@@ -54,10 +59,20 @@ public class Demo {
                         System.out.println("  " + pred);
                     }
                 }
+
+                // Batch inference
+                if (args.length > 2) {
+                    System.out.println("\n--- Batch Detection ---");
+                    List<InferenceResult> batch = yolo.predict(List.of(args).subList(0, Math.min(args.length, 5)));
+                    System.out.println("Batch results: " + batch.size() + " images");
+                    for (int i = 0; i < batch.size(); i++) {
+                        System.out.println("  Image " + i + ": " + batch.get(i).count() + " objects");
+                    }
+                }
             }
         } else {
             System.out.println("\nTo test YOLO detection, run:");
-            System.out.println("  mvn compile exec:java -Dexec.mainClass=io.github.javpower.jpyml.Demo -Dexec.args=\"/path/to/image.jpg yolov8n.pt\"");
+            System.out.println("  mvn compile exec:java -Dexec.mainClass=io.github.javpower.jpyml.Demo -Dexec.args=\"image1.jpg image2.jpg yolov8n.pt\"");
         }
 
         System.out.println("\n=== Done ===");

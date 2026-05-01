@@ -107,6 +107,20 @@ def jpy_extract_result(result, task_type):
 
     return data
 
+def jpy_batch_extract(results, task_type):
+    """Extract all results from a batch as a list of dicts."""
+    return [jpy_extract_result(r, task_type) for r in results]
+
+def jpy_batch_predict(var_name, sources, task_type, kwargs):
+    """Run prediction on multiple images. Returns list of extracted result dicts."""
+    model = _jpy_models[var_name]
+    results = []
+    for src in sources:
+        raw = model(src, **kwargs)
+        for r in raw:
+            results.append(jpy_extract_result(r, task_type))
+    return results
+
 def jpy_model_info(var_name):
     """Get model metadata."""
     model = _jpy_models[var_name]

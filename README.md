@@ -121,7 +121,9 @@ jpy-ml/
 │   ├── _jpy_training.py                # Training helper
 │   ├── _jpy_export.py                  # Model export (ONNX, etc.)
 │   ├── _jpy_validation.py              # Model validation
-│   └── _jpy_annotation.py              # Image annotation
+│   ├── _jpy_annotation.py              # Image annotation
+│   ├── _jpy_streaming.py               # Video/webcam streaming inference
+│   └── requirements.txt                # Python deps for production auto-install
 │
 ├── src/main/java/io/github/javpower/jpyml/
 │   ├── Demo.java                       # Quick demo entry point
@@ -374,6 +376,44 @@ try (Model model = new Model("yolov8n.pt")) {
 }
 ```
 
+### Batch Inference
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    List<String> images = List.of("photo1.jpg", "photo2.jpg", "photo3.jpg");
+    List<InferenceResult> results = model.predict(images);
+
+    for (int i = 0; i < results.size(); i++) {
+        System.out.println("Image " + i + ": " + results.get(i).count() + " objects");
+    }
+}
+```
+
+### Video Stream Inference
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    // Video file — processes frame-by-frame with chunked streaming
+    model.predictVideo("video.mp4", frame -> {
+        System.out.println("Frame: " + frame.count() + " objects");
+    });
+
+    // Webcam — real-time inference (blocks current thread)
+    // Call stopStream() from another thread to stop
+    new Thread(() -> {
+        Thread.sleep(10000);
+        model.stopStream();  // Stop after 10 seconds
+    }).start();
+
+    model.predictStream(0, frame -> {
+        // frame 0 = default webcam
+        if (frame instanceof DetectionResult dr) {
+            System.out.println("Camera: " + dr.getBoxes().size() + " objects");
+        }
+    });
+}
+```
+
 ### Basic Python Operations
 
 ```java
@@ -439,14 +479,14 @@ engine.exec("for i in range(3): print(f'item {i}')",
 
 ## Test Results
 
-All 39 tests passing:
+All 41 tests passing:
 
 | Test Suite | Tests | Description |
 |-----------|-------|-------------|
 | QuickVerifyTest | 10 | Basic Python bridge (eval, put/get, numpy, lists, dicts) |
 | PythonEngineTest | 11 | Engine features (multithreading, callbacks, modules) |
 | PythonRuntimeTest | 3 | Platform detection |
-| ModelIntegrationTest | 15 | Full YOLO integration (inference + training + export) |
+| ModelIntegrationTest | 17 | Full YOLO integration (inference + batch + video + training + export) |
 
 ### ModelIntegrationTest details:
 
@@ -461,6 +501,8 @@ All 39 tests passing:
 | testOBB | yolov8n-obb.pt | obb | Model loads and runs |
 | testModelClose | yolov8n.pt | — | Close lifecycle works |
 | testInferenceSpeed | yolov8n.pt | detect | Timing captured correctly |
+| testBatchPrediction | yolov8n.pt | detect | 3 images batch, 6 objects each |
+| testVideoPrediction | yolov8n.pt | detect | 62 frames streaming (HTTP video) |
 | testYOLO26Detection | yolo26n.pt | detect | 5 objects (YOLO26 next-gen model) |
 | testOnnxInference | yolov8n.onnx | detect | ONNX Runtime inference, 5 objects |
 | testExportOnnx | yolov8n.pt | — | Export to ONNX (12.3 MB) |
@@ -524,9 +566,9 @@ jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engin
 
 ### Next
 - [ ] PyTorch tensor zero-copy bridge for high-performance data transfer
-- [ ] Batch inference API (`model.predict(List<String>)`)
-- [ ] Webcam / video stream real-time inference
-- [ ] python-build-standalone auto-download (zero Python install for end users)
+- [x] Batch inference API (`model.predict(List<String>)`)
+- [x] Webcam / video stream real-time inference
+- [x] python-build-standalone auto-download (zero Python install for end users)
 - [ ] Windows / Linux CI testing
 
 ### Planned ML Engines

@@ -252,6 +252,44 @@ for (PerClassMetric pc : val.getPerClassMetrics()) {
 }
 ```
 
+### 批量推理
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    List<String> images = List.of("photo1.jpg", "photo2.jpg", "photo3.jpg");
+    List<InferenceResult> results = model.predict(images);
+
+    for (int i = 0; i < results.size(); i++) {
+        System.out.println("图像 " + i + ": " + results.get(i).count() + " 个目标");
+    }
+}
+```
+
+### 视频流式推理
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    // 视频文件 — 逐帧分块流式处理
+    model.predictVideo("video.mp4", frame -> {
+        System.out.println("帧: " + frame.count() + " 个目标");
+    });
+
+    // 摄像头 — 实时推理（阻塞当前线程）
+    // 在另一个线程调用 stopStream() 停止
+    new Thread(() -> {
+        Thread.sleep(10000);
+        model.stopStream();  // 10 秒后停止
+    }).start();
+
+    model.predictStream(0, frame -> {
+        // 0 = 默认摄像头
+        if (frame instanceof DetectionResult dr) {
+            System.out.println("摄像头: " + dr.getBoxes().size() + " 个目标");
+        }
+    });
+}
+```
+
 ---
 
 ## 架构
@@ -284,14 +322,14 @@ for (PerClassMetric pc : val.getPerClassMetrics()) {
 
 ## 测试覆盖
 
-全部 39 个测试通过：
+全部 41 个测试通过：
 
 | 测试套件 | 数量 | 说明 |
 |---------|------|------|
 | QuickVerifyTest | 10 | 基础 Python 桥接（eval、put/get、numpy、列表、字典） |
 | PythonEngineTest | 11 | 引擎特性（多线程、回调、模块） |
 | PythonRuntimeTest | 3 | 平台检测 |
-| ModelIntegrationTest | 15 | 完整 YOLO 集成（推理 + 训练 + 导出） |
+| ModelIntegrationTest | 17 | 完整 YOLO 集成（推理 + 批量 + 视频 + 训练 + 导出） |
 
 覆盖范围：
 - 5 种任务类型：检测、分割、分类、姿态、OBB
@@ -340,9 +378,9 @@ jpy-ml 的定位是通用 Java-Python ML 桥接框架。YOLO 是第一个引擎 
 
 ### 近期
 - [ ] PyTorch tensor 零拷贝桥接，实现高性能数据传输
-- [ ] 批量推理 API（`model.predict(List<String>)`）
-- [ ] 摄像头/视频流实时推理
-- [ ] python-build-standalone 自动下载（终端用户无需安装 Python）
+- [x] 批量推理 API（`model.predict(List<String>)`）
+- [x] 摄像头/视频流实时推理
+- [x] python-build-standalone 自动下载（终端用户无需安装 Python）
 - [ ] Windows / Linux CI 测试
 
 ### 计划中的 ML 引擎

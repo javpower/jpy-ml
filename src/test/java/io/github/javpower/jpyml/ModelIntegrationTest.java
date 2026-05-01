@@ -197,6 +197,76 @@ class ModelIntegrationTest {
     }
 
     @Test
+    @Order(15)
+    void testBatchPrediction() throws Exception {
+        try (Model model = new Model(MODEL_PATH)) {
+            List<String> images = List.of(TEST_IMAGE, TEST_IMAGE, TEST_IMAGE);
+            List<InferenceResult> results = model.predict(images);
+
+            assertNotNull(results);
+            assertEquals(3, results.size(), "Batch should return one result per image");
+
+            for (int i = 0; i < results.size(); i++) {
+                assertInstanceOf(DetectionResult.class, results.get(i));
+                DetectionResult dr = (DetectionResult) results.get(i);
+                assertTrue(dr.getBoxes().size() > 0, "Image " + i + " should have detections");
+                System.out.println("Batch image " + i + ": " + dr.getBoxes().size() + " objects");
+            }
+        }
+    }
+
+    @Test
+    @Order(16)
+    void testVideoPrediction() throws Exception {
+        String videoUrl = "https://github.com/ultralytics/assets/releases/download/v0.0.0/solutions_ci_demo.mp4";
+        try (Model model = new Model(MODEL_PATH)) {
+            AtomicInteger frameCount = new AtomicInteger(0);
+            model.predictVideo("0", frame -> {
+                int n = frameCount.incrementAndGet();
+                if (n <= 3) {
+                    assertTrue(frame.count() >= 0, "Frame should have valid count");
+                    System.out.println("Video frame " + n + ": " + frame.count() + " objects");
+                }
+            });
+            assertTrue(frameCount.get() > 0, "Should process at least one frame");
+            System.out.println("Video: processed " + frameCount.get() + " frames");
+        }
+    }
+
+    @Test
+    @Order(17)
+    void testStreamWithAnnotatedImage() throws Exception {
+        String videoUrl = "https://github.com/ultralytics/assets/releases/download/v0.0.0/solutions_ci_demo.mp4";
+        try (Model model = new Model(MODEL_PATH)) {
+            ModelConfig config = new ModelConfig().vidStride(20);
+            AtomicInteger frameCount = new AtomicInteger(0);
+
+            new Thread(() -> {
+                try { Thread.sleep(15000); } catch (InterruptedException ignored) {}
+                model.stopStream();
+            }).start();
+
+            model.predictStream("0", config, true, sf -> {
+                int n = frameCount.incrementAndGet();
+                assertNotNull(sf.getResult(), "Should have inference result");
+                assertTrue(sf.getFrameIndex() >= 0, "Should have valid frame index");
+
+                if (n == 1) {
+                    assertTrue(sf.hasImage(), "First frame should have annotated image");
+                    assertTrue(sf.getAnnotatedImage().length > 1000,
+                            "Annotated JPEG should be >1KB, got " + sf.getAnnotatedImage().length);
+                    System.out.println("Stream frame: " + sf.getFrameIndex() +
+                            ", objects=" + sf.getResult().count() +
+                            ", image=" + sf.getAnnotatedImage().length + " bytes");
+                }
+            });
+
+            assertTrue(frameCount.get() > 0, "Should process at least one frame");
+            System.out.println("Stream: processed " + frameCount.get() + " frames with annotated images");
+        }
+    }
+
+    @Test
     @Order(10)
     void testYOLO26Detection() throws Exception {
         try (Model model = new Model("yolo26n.pt")) {

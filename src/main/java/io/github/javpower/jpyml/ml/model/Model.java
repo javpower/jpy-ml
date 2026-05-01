@@ -9,6 +9,7 @@ import io.github.javpower.jpyml.ml.export.ExportConfig;
 import io.github.javpower.jpyml.ml.export.ExportFormat;
 import io.github.javpower.jpyml.ml.export.ExportResult;
 import io.github.javpower.jpyml.ml.result.*;
+import io.github.javpower.jpyml.ml.result.StreamFrame;
 import io.github.javpower.jpyml.ml.training.TrainingCallback;
 import io.github.javpower.jpyml.ml.training.TrainingConfig;
 import io.github.javpower.jpyml.ml.training.TrainingResult;
@@ -288,7 +289,53 @@ public class Model implements AutoCloseable {
         return new OBBResult(sp, w, h, speed, names, preds);
     }
 
-    // ==================== Video ====================
+    // ==================== Batch Prediction ====================
+
+    public List<InferenceResult> predict(List<String> imagePaths) throws InferenceException {
+        return predict(imagePaths, new ModelConfig());
+    }
+
+    public List<InferenceResult> predict(List<String> imagePaths, ModelConfig config) throws InferenceException {
+        ensureOpen();
+        if (imagePaths == null || imagePaths.isEmpty()) {
+            throw new InferenceException("Image paths must not be empty");
+        }
+        try {
+            String mv = "_jpy_mv" + id;
+            String rv = "_jpy_pr" + id;
+            Map<String, Object> kwargs = config.toPythonKwargs();
+
+            // Put image list into Python (Jep converts Java List to Python list)
+            engine.put(rv + "_batch_src", imagePaths);
+
+            // Build kwargs dict in Python
+            String dictStr = mapToPythonDict(kwargs);
+            engine.exec(rv + "_batch_kwargs = " + dictStr);
+
+            // Run batch predict in Python
+            engine.exec(
+                    rv + "_batch = []\n" +
+                    "for " + rv + "_src in " + rv + "_batch_src:\n" +
+                    "    for " + rv + "_raw in " + mv + "(" + rv + "_src, **" + rv + "_batch_kwargs):\n" +
+                    "        " + rv + "_batch.append(jpy_extract_result(" + rv + "_raw, '" + taskType.getKey() + "'))\n"
+            );
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> batchData = engine.eval(rv + "_batch");
+
+            List<InferenceResult> results = new ArrayList<>();
+            if (batchData != null) {
+                for (Map<String, Object> data : batchData) {
+                    results.add(buildResult(data));
+                }
+            }
+            return results;
+        } catch (Exception e) {
+            throw new InferenceException("Batch prediction failed", e);
+        }
+    }
+
+    // ==================== Video (chunk-based streaming) ====================
 
     public void predictVideo(String videoPath, Consumer<InferenceResult> frameConsumer) {
         predictVideo(videoPath, new ModelConfig(), frameConsumer);
@@ -297,41 +344,110 @@ public class Model implements AutoCloseable {
     public void predictVideo(String videoPath, ModelConfig config, Consumer<InferenceResult> frameConsumer) {
         ensureOpen();
         try {
-            Map<String, Object> kwargs = config.toPythonKwargs();
-            kwargs.put("stream", true);
+            PythonScriptLoader.ensureLoaded(engine, "_jpy_streaming.py");
             String mv = "_jpy_mv" + id;
-            engine.put("_jpy_vid_src", videoPath);
+            String sv = "_jpy_st" + id;
+            Map<String, Object> kwargs = config.toPythonKwargs();
+            String dictStr = mapToPythonDict(kwargs);
 
-            StringBuilder call = new StringBuilder();
-            call.append("_jpy_vid_results = ").append(mv).append("(").append("_jpy_vid_src");
-            for (Map.Entry<String, Object> e : kwargs.entrySet()) {
-                call.append(", ").append(e.getKey()).append("=");
-                Object v = e.getValue();
-                if (v instanceof Boolean) call.append((Boolean) v ? "True" : "False");
-                else if (v instanceof String) call.append("'").append(v).append("'");
-                else call.append(v);
-            }
-            call.append(")");
+            engine.put(sv + "_src", videoPath);
+            engine.exec(sv + "_kwargs = " + dictStr);
+            engine.exec("jpy_stream_start(" + mv + ", " + sv + "_src, " + sv + "_kwargs)");
 
-            engine.exec(call.toString());
-
-            // Iterate stream
-            engine.exec(
-                    "_jpy_vid_frames = []\n" +
-                    "for _jpy_vr in _jpy_vid_results:\n" +
-                    "    _jpy_vid_frames.append(jpy_extract_result(_jpy_vr, '" + taskType.getKey() + "'))\n"
-            );
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> frames = engine.eval("_jpy_vid_frames");
-            if (frames != null) {
-                for (Map<String, Object> frame : frames) {
-                    frameConsumer.accept(buildResult(frame));
+            // Read frames in chunks
+            while (true) {
+                engine.exec(sv + "_chunk = jpy_stream_next('" + taskType.getKey() + "', chunk_size=10)");
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> chunk = engine.eval(sv + "_chunk");
+                if (chunk == null || chunk.isEmpty()) break;
+                for (Map<String, Object> frameData : chunk) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> resultMap = (Map<String, Object>) frameData.get("result");
+                    frameConsumer.accept(buildResult(resultMap));
                 }
             }
+
+            engine.exec("jpy_stream_cleanup()");
         } catch (JepException e) {
             throw new InferenceException("Video prediction failed: " + videoPath, e);
         }
+    }
+
+    // ==================== Stream (webcam / RTSP / real-time) ====================
+
+    private volatile boolean streaming = false;
+
+    public void predictStream(int cameraIndex, Consumer<StreamFrame> frameConsumer) {
+        predictStream(String.valueOf(cameraIndex), new ModelConfig(), true, frameConsumer);
+    }
+
+    public void predictStream(String source, Consumer<StreamFrame> frameConsumer) {
+        predictStream(source, new ModelConfig(), true, frameConsumer);
+    }
+
+    public void predictStream(int cameraIndex, ModelConfig config, Consumer<StreamFrame> frameConsumer) {
+        predictStream(String.valueOf(cameraIndex), config, true, frameConsumer);
+    }
+
+    public void predictStream(String source, ModelConfig config, Consumer<StreamFrame> frameConsumer) {
+        predictStream(source, config, true, frameConsumer);
+    }
+
+    public void predictStream(int cameraIndex, ModelConfig config, boolean annotate, Consumer<StreamFrame> frameConsumer) {
+        predictStream(String.valueOf(cameraIndex), config, annotate, frameConsumer);
+    }
+
+    public void predictStream(String source, ModelConfig config, boolean annotate, Consumer<StreamFrame> frameConsumer) {
+        ensureOpen();
+        streaming = true;
+        try {
+            PythonScriptLoader.ensureLoaded(engine, "_jpy_streaming.py");
+            String mv = "_jpy_mv" + id;
+            String sv = "_jpy_st" + id;
+            Map<String, Object> kwargs = config.toPythonKwargs();
+            String dictStr = mapToPythonDict(kwargs);
+
+            engine.put(sv + "_src", source);
+            engine.exec(sv + "_kwargs = " + dictStr);
+            engine.exec("jpy_stream_start(" + mv + ", " + sv + "_src, " + sv + "_kwargs)");
+
+            // Read frames one at a time for low latency
+            while (streaming) {
+                engine.exec(sv + "_chunk = jpy_stream_next('" + taskType.getKey() +
+                        "', chunk_size=1, annotate=" + (annotate ? "True" : "False") + ")");
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> chunk = engine.eval(sv + "_chunk");
+                if (chunk == null || chunk.isEmpty()) break;
+                for (Map<String, Object> frameData : chunk) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> resultMap = (Map<String, Object>) frameData.get("result");
+                    InferenceResult result = buildResult(resultMap);
+
+                    byte[] imageBytes = null;
+                    if (annotate && frameData.get("image") != null) {
+                        imageBytes = (byte[]) frameData.get("image");
+                    }
+                    int frameIndex = frameData.get("frame_index") instanceof Number ?
+                            ((Number) frameData.get("frame_index")).intValue() : 0;
+
+                    frameConsumer.accept(new StreamFrame(result, imageBytes, frameIndex));
+                }
+            }
+
+            engine.exec("jpy_stream_cleanup()");
+        } catch (JepException e) {
+            throw new InferenceException("Stream prediction failed: " + source, e);
+        } finally {
+            streaming = false;
+        }
+    }
+
+    public void stopStream() {
+        streaming = false;
+    }
+
+    public boolean isStreaming() {
+        return streaming;
     }
 
     // ==================== Training ====================

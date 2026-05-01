@@ -190,6 +190,48 @@ public class PythonRuntime {
     }
 
     /**
+     * Check if the runtime is ready (Python + jep + all required packages installed).
+     */
+    public static boolean isReady() {
+        if (!initialized.get()) return false;
+        if (jepNativeLib == null || !Files.exists(jepNativeLib)) return false;
+        return true;
+    }
+
+    /**
+     * Ensure Python packages are installed. Checks for import availability and installs missing packages.
+     */
+    public static int ensurePackages(String... packages) throws IOException, InterruptedException {
+        ensureInitialized();
+        // Build a list of packages that need installation
+        List<String> missing = new ArrayList<>();
+        for (String pkg : packages) {
+            if (!checkPackageInstalled(pkg)) {
+                missing.add(pkg);
+            }
+        }
+        if (missing.isEmpty()) return 0;
+        System.out.println("[jpy-ml] Installing missing packages: " + missing);
+        return pipInstall(missing.toArray(new String[0]));
+    }
+
+    private static boolean checkPackageInstalled(String packageName) {
+        Path pythonExe = getPythonExecutable();
+        if (pythonExe == null || !Files.exists(pythonExe)) return false;
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    pythonExe.toString(), "-c", "import " + packageName
+            ).redirectErrorStream(true);
+            Process p = pb.start();
+            p.getOutputStream().close();
+            int exit = p.waitFor();
+            return exit == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
      * Get the site-packages directory for the embedded Python.
      */
     public static Path getSitePackages() {
@@ -262,19 +304,6 @@ public class PythonRuntime {
         return sp != null ? sp.toString() : "";
     }
 
-    private static void configureJepPaths() {
-        jepNativeLib = findJepNativeLibrary();
-        if (jepNativeLib != null) {
-            System.setProperty("jep.library.path", jepNativeLib.toString());
-        }
-
-        Path pythonLibDir = pythonHome.resolve("lib");
-        Path pythonBinDir = getPythonExecutable().getParent();
-        String extraPaths = pythonBinDir + File.pathSeparator + pythonLibDir;
-        System.setProperty("java.library.path",
-                System.getProperty("java.library.path", "") + File.pathSeparator + extraPaths);
-    }
-
     private static void downloadAndExtractPython(String platformKey) throws IOException {
         String downloadUrl = buildDownloadUrl(platformKey);
         String archiveName = downloadUrl.substring(downloadUrl.lastIndexOf('/') + 1);
@@ -294,33 +323,76 @@ public class PythonRuntime {
         Path extractTarget = runtimeRoot.resolve("python");
         Files.createDirectories(extractTarget);
 
-        if (archiveName.endsWith(".tar.zst") || archiveName.endsWith(".tar.gz")) {
-            extractTar(archivePath, extractTarget, platformKey);
-        } else if (archiveName.endsWith(".zip")) {
-            extractZip(archivePath, extractTarget, platformKey);
+        try {
+            if (archiveName.endsWith(".tar.zst") || archiveName.endsWith(".tar.gz")) {
+                extractTar(archivePath, extractTarget, platformKey);
+            } else if (archiveName.endsWith(".zip")) {
+                extractZip(archivePath, extractTarget, platformKey);
+            }
+
+            // Verify extraction
+            if (!Files.exists(getPythonExecutable())) {
+                throw new IOException("Python executable not found after extraction: " + getPythonExecutable());
+            }
+        } catch (Exception e) {
+            // Clean up partial extraction so next run retries
+            Path pythonDir = pythonHome;
+            if (pythonDir != null && Files.exists(pythonDir)) {
+                deleteRecursively(pythonDir);
+            }
+            throw e;
         }
 
-        // Install jep into the embedded Python
-        System.out.println("[jpy-ml] Installing jep bridge package...");
-        Path pythonExe = getPythonExecutable();
-        ProcessBuilder pb = new ProcessBuilder(
-                pythonExe.toString(), "-m", "pip", "install", "jep"
-        ).redirectErrorStream(true);
-        Process p = pb.start();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                System.out.println("[pip] " + line);
-            }
+        // Install required packages from bundled requirements.txt
+        System.out.println("[jpy-ml] Installing Python packages (first run may take a few minutes)...");
+        installBundledRequirements();
+
+        // Verify jep was installed
+        sitePackagesPath = computeSitePackages();
+        jepNativeLib = findJepNativeLibrary();
+        if (jepNativeLib == null || !Files.exists(jepNativeLib)) {
+            throw new IOException("Jep native library not found after installation. " +
+                    "Expected at: " + (jepNativeLib != null ? jepNativeLib : "site-packages/jep/"));
         }
+    }
+
+    /**
+     * Install packages from the bundled requirements.txt resource.
+     */
+    private static void installBundledRequirements() throws IOException {
+        Path pythonExe = getPythonExecutable();
+
+        // Extract requirements.txt from classpath to a temp file
+        Path tempReq = Files.createTempFile("jpy-ml-requirements", ".txt");
+        try (var is = PythonRuntime.class.getResourceAsStream("/requirements.txt")) {
+            if (is == null) {
+                throw new IOException("requirements.txt not found in classpath");
+            }
+            Files.copy(is, tempReq, StandardCopyOption.REPLACE_EXISTING);
+        }
+
         try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    pythonExe.toString(), "-m", "pip", "install", "-r", tempReq.toString()
+            ).redirectErrorStream(true);
+
+            Process p = pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("[pip] " + line);
+                }
+            }
+
             int exit = p.waitFor();
             if (exit != 0) {
-                throw new IOException("Failed to install jep package (exit code " + exit + ")");
+                throw new IOException("pip install failed (exit code " + exit + ")");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while installing jep", e);
+            throw new IOException("Interrupted during pip install", e);
+        } finally {
+            Files.deleteIfExists(tempReq);
         }
     }
 
@@ -353,8 +425,26 @@ public class PythonRuntime {
     }
 
     private static void downloadFile(String url, Path target) throws IOException {
-        try (InputStream in = new URL(url).openStream()) {
-            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+        var connection = new URL(url).openConnection();
+        int totalSize = connection.getContentLength();
+        try (InputStream in = connection.getInputStream();
+             OutputStream out = Files.newOutputStream(target)) {
+            byte[] buf = new byte[8192];
+            long downloaded = 0;
+            int lastPercent = -1;
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+                downloaded += n;
+                if (totalSize > 0) {
+                    int percent = (int) (downloaded * 100 / totalSize);
+                    if (percent != lastPercent && percent % 10 == 0) {
+                        System.out.printf("[jpy-ml] Downloaded %d/%d MB (%d%%)%n",
+                                downloaded / (1024 * 1024), totalSize / (1024 * 1024), percent);
+                        lastPercent = percent;
+                    }
+                }
+            }
         }
     }
 
