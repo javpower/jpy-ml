@@ -6,7 +6,10 @@ package io.github.javpower.jpyml.core;
  * Creates a separate namespace so variables don't pollute __main__.
  * Each module is backed by the thread's Jep interpreter but uses
  * a dedicated dict as the namespace.
+ *
+ * @deprecated This class is not currently used in the framework. May be removed in future versions.
  */
+@Deprecated
 public class PythonModule implements AutoCloseable {
 
     private final PythonEngine engine;

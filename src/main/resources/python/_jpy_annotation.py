@@ -84,4 +84,4 @@ def jpy_annotate(input_path, output_path, boxes, task):
         img.save(output_path)
         return output_path
     except Exception as e:
-        return f"Annotation error: {e}"
+        raise RuntimeError(f"Annotation failed: {e}") from e

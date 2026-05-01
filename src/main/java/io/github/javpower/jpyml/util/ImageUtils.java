@@ -1,6 +1,7 @@
 package io.github.javpower.jpyml.util;
 
 import io.github.javpower.jpyml.core.PythonEngine;
+import io.github.javpower.jpyml.exception.InferenceException;
 import jep.JepException;
 
 import java.util.Map;
@@ -33,7 +34,7 @@ public class ImageUtils {
                     """);
             return engine.eval("_jpy_img_info");
         } catch (JepException e) {
-            throw new RuntimeException("Failed to get image info: " + imagePath, e);
+            throw new InferenceException("Failed to get image info: " + imagePath, e);
         }
     }
 
@@ -51,7 +52,7 @@ public class ImageUtils {
                     _jpy_img_obj.close()
                     """);
         } catch (JepException e) {
-            throw new RuntimeException("Failed to resize image: " + inputPath, e);
+            throw new InferenceException("Failed to resize image: " + inputPath, e);
         }
     }
 
@@ -67,7 +68,7 @@ public class ImageUtils {
                     _jpy_img_obj.close()
                     """);
         } catch (JepException e) {
-            throw new RuntimeException("Failed to convert image: " + inputPath, e);
+            throw new InferenceException("Failed to convert image: " + inputPath, e);
         }
     }
 
@@ -84,7 +85,7 @@ public class ImageUtils {
                     _jpy_img_obj.close()
                     """);
         } catch (JepException e) {
-            throw new RuntimeException("Failed to crop image: " + inputPath, e);
+            throw new InferenceException("Failed to crop image: " + inputPath, e);
         }
     }
 }

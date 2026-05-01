@@ -1,5 +1,8 @@
 package io.github.javpower.jpyml.core;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.*;
 import java.net.URL;
 import java.nio.file.*;
@@ -15,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class PythonRuntime {
 
+    private static final Logger log = LoggerFactory.getLogger(PythonRuntime.class);
     private static final String RUNTIME_DIR_NAME = ".jpy-ml";
     private static final String PYTHON_VERSION = "3.12.6";
     private static final String PYTHON_RELEASE_TAG = "20240909";
@@ -96,9 +100,9 @@ public class PythonRuntime {
                     .orElse(null);
         }
 
-        System.out.println("[jpy-ml] Using existing Python: " + pythonPath);
-        System.out.println("[jpy-ml] Jep native lib: " + jepNativeLib);
-        System.out.println("[jpy-ml] Site-packages: " + sitePackagesPath);
+        log.info("Using existing Python: {}", pythonPath);
+        log.info("Jep native lib: {}", jepNativeLib);
+        log.info("Site-packages: {}", sitePackagesPath);
 
         initialized.set(true);
     }
@@ -117,11 +121,11 @@ public class PythonRuntime {
         pythonHome = runtimeRoot.resolve("python").resolve(platformKey);
 
         if (!Files.exists(getPythonExecutable())) {
-            System.out.println("[jpy-ml] First-time setup: downloading Python " + PYTHON_VERSION + " for " + platformKey + "...");
+            log.info("First-time setup: downloading Python {} for {}...", PYTHON_VERSION, platformKey);
             downloadAndExtractPython(platformKey);
-            System.out.println("[jpy-ml] Python runtime ready at " + pythonHome);
+            log.info("Python runtime ready at {}", pythonHome);
         } else {
-            System.out.println("[jpy-ml] Using cached Python runtime at " + pythonHome);
+            log.info("Using cached Python runtime at {}", pythonHome);
         }
 
         sitePackagesPath = computeSitePackages();
@@ -154,7 +158,7 @@ public class PythonRuntime {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                System.out.println("[pip] " + line);
+                log.debug("[pip] {}", line);
             }
         }
         return p.waitFor();
@@ -176,7 +180,7 @@ public class PythonRuntime {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                System.out.println("[pip] " + line);
+                log.debug("[pip] {}", line);
             }
         }
         return p.waitFor();
@@ -211,7 +215,7 @@ public class PythonRuntime {
             }
         }
         if (missing.isEmpty()) return 0;
-        System.out.println("[jpy-ml] Installing missing packages: " + missing);
+        log.info("Installing missing packages: {}", missing);
         return pipInstall(missing.toArray(new String[0]));
     }
 
@@ -260,9 +264,9 @@ public class PythonRuntime {
         // Fallback: try the venv's pip directly
         if (pythonHome != null) {
             Path pip = pythonHome.resolve("bin").resolve("pip");
-            if (Files.exists(pip)) return exe;
+            if (Files.exists(pip)) return pip;
             Path pip3 = pythonHome.resolve("bin").resolve("pip3");
-            if (Files.exists(pip3)) return exe;
+            if (Files.exists(pip3)) return pip3;
         }
         return null;
     }
@@ -313,13 +317,13 @@ public class PythonRuntime {
 
         // Download
         if (!Files.exists(archivePath)) {
-            System.out.println("[jpy-ml] Downloading from " + downloadUrl);
+            log.info("Downloading from {}", downloadUrl);
             downloadFile(downloadUrl, archivePath);
-            System.out.println("[jpy-ml] Download complete: " + archivePath);
+            log.info("Download complete: {}", archivePath);
         }
 
         // Extract
-        System.out.println("[jpy-ml] Extracting...");
+        log.info("Extracting...");
         Path extractTarget = runtimeRoot.resolve("python");
         Files.createDirectories(extractTarget);
 
@@ -344,7 +348,7 @@ public class PythonRuntime {
         }
 
         // Install required packages from bundled requirements.txt
-        System.out.println("[jpy-ml] Installing Python packages (first run may take a few minutes)...");
+        log.info("Installing Python packages (first run may take a few minutes)...");
         installBundledRequirements();
 
         // Verify jep was installed
@@ -380,7 +384,7 @@ public class PythonRuntime {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    System.out.println("[pip] " + line);
+                    log.debug("[pip] {}", line);
                 }
             }
 

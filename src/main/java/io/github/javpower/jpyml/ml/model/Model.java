@@ -5,6 +5,7 @@ import io.github.javpower.jpyml.core.PythonScriptLoader;
 import io.github.javpower.jpyml.exception.InferenceException;
 import io.github.javpower.jpyml.exception.ModelException;
 import io.github.javpower.jpyml.exception.TrainingException;
+import io.github.javpower.jpyml.exception.ValidationException;
 import io.github.javpower.jpyml.ml.export.ExportConfig;
 import io.github.javpower.jpyml.ml.export.ExportFormat;
 import io.github.javpower.jpyml.ml.export.ExportResult;
@@ -17,6 +18,8 @@ import io.github.javpower.jpyml.ml.validation.PerClassMetric;
 import io.github.javpower.jpyml.ml.validation.ValidationResult;
 import jep.JepException;
 
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -66,7 +69,7 @@ public class Model implements AutoCloseable {
 
             // Load model in Python
             engine.put(varName + "_path", modelPath);
-            String taskArg = overrideTask != null ? ", task='" + overrideTask.getKey() + "'" : "";
+            String taskArg = overrideTask != null ? ", task='" + escapePythonString(overrideTask.getKey()) + "'" : "";
             engine.exec(varName + "_info = jpy_load_model(" + varName + "_path" + taskArg + ")");
             @SuppressWarnings("unchecked")
             Map<String, Object> info = engine.eval(varName + "_info");
@@ -95,7 +98,7 @@ public class Model implements AutoCloseable {
             this.modelInfo = new ModelInfo(taskType, classNames, classNames.size(), params, layers);
 
             // Keep a reference to the actual Python var for this model
-            engine.exec("_jpy_mv" + this.id + " = _jpy_models['" + detectedVar + "']");
+            engine.exec("_jpy_mv" + this.id + " = _jpy_models['" + escapePythonString(detectedVar) + "']");
 
         } catch (JepException e) {
             throw new ModelException("Failed to load model: " + modelPath, e);
@@ -130,9 +133,9 @@ public class Model implements AutoCloseable {
         StringBuilder call = new StringBuilder();
         call.append(rv).append("_raw = ").append(mv).append("(").append(rv).append("_src");
         for (Map.Entry<String, Object> e : kwargs.entrySet()) {
-            call.append(", ").append(e.getKey()).append("=");
+            call.append(", ").append(escapePythonString(e.getKey())).append("=");
             Object v = e.getValue();
-            if (v instanceof String) call.append("'").append(v).append("'");
+            if (v instanceof String) call.append("'").append(escapePythonString((String) v)).append("'");
             else if (v instanceof Boolean) call.append((Boolean) v ? "True" : "False");
             else if (v instanceof List) {
                 call.append(v.toString().replace('[', '(').replace(']', ')'));
@@ -144,7 +147,8 @@ public class Model implements AutoCloseable {
         engine.exec(call.toString());
 
         // Extract first result
-        engine.exec(rv + " = jpy_extract_result(" + rv + "_raw[0], '" + taskType.getKey() + "')");
+        engine.put(rv + "_task", taskType.getKey());
+        engine.exec(rv + " = jpy_extract_result(" + rv + "_raw[0], " + rv + "_task)");
         @SuppressWarnings("unchecked")
         Map<String, Object> data = engine.eval(rv);
 
@@ -313,11 +317,12 @@ public class Model implements AutoCloseable {
             engine.exec(rv + "_batch_kwargs = " + dictStr);
 
             // Run batch predict in Python
+            engine.put(rv + "_task", taskType.getKey());
             engine.exec(
                     rv + "_batch = []\n" +
                     "for " + rv + "_src in " + rv + "_batch_src:\n" +
                     "    for " + rv + "_raw in " + mv + "(" + rv + "_src, **" + rv + "_batch_kwargs):\n" +
-                    "        " + rv + "_batch.append(jpy_extract_result(" + rv + "_raw, '" + taskType.getKey() + "'))\n"
+                    "        " + rv + "_batch.append(jpy_extract_result(" + rv + "_raw, " + rv + "_task))\n"
             );
 
             @SuppressWarnings("unchecked")
@@ -332,6 +337,166 @@ public class Model implements AutoCloseable {
             return results;
         } catch (Exception e) {
             throw new InferenceException("Batch prediction failed", e);
+        }
+    }
+
+    // ==================== Raw Prediction (Zero-Copy) ====================
+
+    /**
+     * Zero-copy prediction for detection tasks. Returns RawDetectionResult
+     * with direct buffer access for high-performance scenarios.
+     * <p>
+     * Only supports DETECT task type. For other task types, use predict().
+     *
+     * @param imagePath path to the image file
+     * @return RawDetectionResult with direct buffer access
+     * @throws InferenceException if prediction fails or task type is not DETECT
+     */
+    public RawDetectionResult predictRaw(String imagePath) throws InferenceException {
+        return predictRaw(imagePath, new ModelConfig());
+    }
+
+    /**
+     * Zero-copy prediction for detection tasks with custom config.
+     *
+     * @param imagePath path to the image file
+     * @param config    inference configuration
+     * @return RawDetectionResult with direct buffer access
+     * @throws InferenceException if prediction fails or task type is not DETECT
+     */
+    public RawDetectionResult predictRaw(String imagePath, ModelConfig config) throws InferenceException {
+        ensureOpen();
+        if (taskType != TaskType.DETECT) {
+            throw new InferenceException("predictRaw() only supports DETECT task, current task: " + taskType);
+        }
+        try {
+            return predictRawClean(imagePath, config);
+        } catch (Exception e) {
+            throw new InferenceException("Raw prediction failed on: " + imagePath, e);
+        }
+    }
+
+    private RawDetectionResult predictRawClean(String imagePath, ModelConfig config) throws JepException {
+        String mv = "_jpy_mv" + id;
+        String rv = "_jpy_prr" + id;
+        Map<String, Object> kwargs = config.toPythonKwargs();
+
+        // Execute prediction
+        engine.put(rv + "_src", imagePath);
+        StringBuilder call = new StringBuilder();
+        call.append(rv).append("_raw = ").append(mv).append("(").append(rv).append("_src");
+        for (Map.Entry<String, Object> e : kwargs.entrySet()) {
+            call.append(", ").append(escapePythonString(e.getKey())).append("=");
+            Object v = e.getValue();
+            if (v instanceof String) call.append("'").append(escapePythonString((String) v)).append("'");
+            else if (v instanceof Boolean) call.append((Boolean) v ? "True" : "False");
+            else if (v instanceof List) {
+                call.append(v.toString().replace('[', '(').replace(']', ')'));
+            }
+            else call.append(v);
+        }
+        call.append(")");
+        engine.exec(call.toString());
+
+        // Get result count first to size buffers
+        engine.exec(rv + "_count = len(" + rv + "_raw[0].boxes) if " + rv + "_raw[0].boxes is not None else 0");
+        int boxCount = engine.eval(rv + "_count");
+
+        // Acquire buffers from pool
+        TensorBufferPool pool = TensorBufferPool.getInstance();
+        FloatBuffer xyxyBuf = pool.acquireFloatBuffer(Math.max(boxCount, 1) * 4);
+        FloatBuffer confBuf = pool.acquireFloatBuffer(Math.max(boxCount, 1));
+        IntBuffer clsBuf = pool.acquireIntBuffer(Math.max(boxCount, 1));
+
+        // Create DirectNDArray wrappers
+        jep.DirectNDArray<FloatBuffer> xyxyNd = new jep.DirectNDArray<>(xyxyBuf, boxCount * 4);
+        jep.DirectNDArray<FloatBuffer> confNd = new jep.DirectNDArray<>(confBuf, boxCount);
+        jep.DirectNDArray<IntBuffer> clsNd = new jep.DirectNDArray<>(clsBuf, boxCount);
+
+        // Pass buffers to Python
+        engine.put(rv + "_xyxy_buf", xyxyNd);
+        engine.put(rv + "_conf_buf", confNd);
+        engine.put(rv + "_cls_buf", clsNd);
+
+        // Extract result with zero-copy
+        engine.put(rv + "_task", taskType.getKey());
+        engine.exec(rv + " = jpy_extract_result_ndarray(" + rv + "_raw[0], " + rv + "_task, " +
+                "{'boxes_xyxy': " + rv + "_xyxy_buf, 'boxes_conf': " + rv + "_conf_buf, 'boxes_cls': " + rv + "_cls_buf})");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = engine.eval(rv);
+
+        // Parse common fields
+        String sourcePath = (String) data.getOrDefault("path", "");
+        List<Number> origShape = (List<Number>) data.get("orig_shape");
+        int origH = origShape != null && origShape.size() >= 1 ? origShape.get(0).intValue() : 0;
+        int origW = origShape != null && origShape.size() >= 2 ? origShape.get(1).intValue() : 0;
+
+        Map<String, Object> speedData = (Map<String, Object>) data.get("speed");
+        InferenceSpeed speed = new InferenceSpeed(
+                floatVal(speedData, "preprocess"),
+                floatVal(speedData, "inference"),
+                floatVal(speedData, "postprocess")
+        );
+
+        Map<Integer, String> names = new LinkedHashMap<>();
+        Object rawNames = data.get("names");
+        if (rawNames instanceof Map) {
+            ((Map<Object, Object>) rawNames).forEach((k, v) -> names.put(((Number) k).intValue(), String.valueOf(v)));
+        }
+
+        // Reset buffer limits for reading
+        xyxyBuf.limit(boxCount * 4);
+        confBuf.limit(boxCount);
+        clsBuf.limit(boxCount);
+
+        return new RawDetectionResult(sourcePath, origW, origH, speed, names,
+                xyxyBuf, confBuf, clsBuf, boxCount);
+    }
+
+    // ==================== GPU Memory Management ====================
+
+    /**
+     * Warmup the model by running a dummy inference. This triggers CUDA kernel
+     * compilation and reduces first-inference latency.
+     */
+    public void warmup() throws InferenceException {
+        ensureOpen();
+        try {
+            String mv = "_jpy_mv" + id;
+            engine.exec(mv + ".warmup()");
+        } catch (JepException e) {
+            throw new InferenceException("Model warmup failed", e);
+        }
+    }
+
+    /**
+     * Move the model to CPU to free GPU memory.
+     * After calling this, inference will run on CPU until reload() is called.
+     */
+    public void unload() throws InferenceException {
+        ensureOpen();
+        try {
+            String mv = "_jpy_mv" + id;
+            engine.exec(mv + ".cpu()");
+        } catch (JepException e) {
+            throw new InferenceException("Failed to unload model to CPU", e);
+        }
+    }
+
+    /**
+     * Move the model to the specified device.
+     *
+     * @param device target device (e.g., "cpu", "cuda:0", "mps")
+     */
+    public void reload(String device) throws InferenceException {
+        ensureOpen();
+        try {
+            String mv = "_jpy_mv" + id;
+            engine.put(mv + "_device", device);
+            engine.exec(mv + ".to(" + mv + "_device)");
+        } catch (JepException e) {
+            throw new InferenceException("Failed to reload model to device: " + device, e);
         }
     }
 
@@ -355,8 +520,9 @@ public class Model implements AutoCloseable {
             engine.exec("jpy_stream_start(" + mv + ", " + sv + "_src, " + sv + "_kwargs)");
 
             // Read frames in chunks
+            engine.put(sv + "_task", taskType.getKey());
             while (true) {
-                engine.exec(sv + "_chunk = jpy_stream_next('" + taskType.getKey() + "', chunk_size=10)");
+                engine.exec(sv + "_chunk = jpy_stream_next(" + sv + "_task, chunk_size=10)");
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> chunk = engine.eval(sv + "_chunk");
                 if (chunk == null || chunk.isEmpty()) break;
@@ -412,9 +578,10 @@ public class Model implements AutoCloseable {
             engine.exec("jpy_stream_start(" + mv + ", " + sv + "_src, " + sv + "_kwargs)");
 
             // Read frames one at a time for low latency
+            engine.put(sv + "_task", taskType.getKey());
             while (streaming) {
-                engine.exec(sv + "_chunk = jpy_stream_next('" + taskType.getKey() +
-                        "', chunk_size=1, annotate=" + (annotate ? "True" : "False") + ")");
+                engine.exec(sv + "_chunk = jpy_stream_next(" + sv + "_task" +
+                        ", chunk_size=1, annotate=" + (annotate ? "True" : "False") + ")");
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> chunk = engine.eval(sv + "_chunk");
                 if (chunk == null || chunk.isEmpty()) break;
@@ -501,17 +668,18 @@ public class Model implements AutoCloseable {
 
     // ==================== Validation ====================
 
-    public ValidationResult validate() throws InferenceException {
+    public ValidationResult validate() throws ValidationException {
         return validate(null);
     }
 
-    public ValidationResult validate(String dataConfig) throws InferenceException {
+    public ValidationResult validate(String dataConfig) throws ValidationException {
         ensureOpen();
         try {
             PythonScriptLoader.ensureLoaded(engine, "_jpy_validation.py");
             engine.put("_jpy_val_model_path", modelPath);
             if (dataConfig != null) {
-                engine.exec("_jpy_val_result = jpy_validate(_jpy_val_model_path, data='" + dataConfig + "')");
+                engine.put("_jpy_val_data", dataConfig);
+                engine.exec("_jpy_val_result = jpy_validate(_jpy_val_model_path, data=_jpy_val_data)");
             } else {
                 engine.exec("_jpy_val_result = jpy_validate(_jpy_val_model_path)");
             }
@@ -545,7 +713,7 @@ public class Model implements AutoCloseable {
                     perClass
             );
         } catch (JepException e) {
-            throw new InferenceException("Validation failed", e);
+            throw new ValidationException("Validation failed", e);
         }
     }
 
@@ -571,7 +739,8 @@ public class Model implements AutoCloseable {
 
             String dictStr = mapToPythonDict(kwargs);
             engine.exec("_jpy_exp_kwargs = " + dictStr);
-            engine.exec("_jpy_exp_result = jpy_export(_jpy_exp_model_path, '" + config.getFormat().getKey() + "', **_jpy_exp_kwargs)");
+            engine.put("_jpy_exp_format", config.getFormat().getKey());
+            engine.exec("_jpy_exp_result = jpy_export(_jpy_exp_model_path, _jpy_exp_format, **_jpy_exp_kwargs)");
 
             @SuppressWarnings("unchecked")
             Map<String, Object> result = engine.eval("_jpy_exp_result");
@@ -626,20 +795,17 @@ public class Model implements AutoCloseable {
         return v instanceof Number ? ((Number) v).intValue() : 0;
     }
 
-    private static String dictToPythonKwargs(Map<String, Object> kwargs) {
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, Object> e : kwargs.entrySet()) {
-            if (sb.length() > 0) sb.append(", ");
-            sb.append(e.getKey()).append("=");
-            Object v = e.getValue();
-            if (v instanceof String) sb.append("'").append(v).append("'");
-            else if (v instanceof Boolean) sb.append((Boolean) v ? "True" : "False");
-            else if (v instanceof List) {
-                sb.append(v.toString().replace('[', '(').replace(']', ')'));
-            }
-            else sb.append(v);
-        }
-        return sb.toString();
+    /**
+     * Escape a string for safe use in Python string literals.
+     * Escapes single quotes, backslashes, and newlines.
+     */
+    private static String escapePythonString(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 
     private static String mapToPythonDict(Map<String, Object> map) {
@@ -648,12 +814,12 @@ public class Model implements AutoCloseable {
         for (Map.Entry<String, Object> e : map.entrySet()) {
             if (!first) sb.append(", ");
             first = false;
-            sb.append("'").append(e.getKey()).append("': ");
+            sb.append("'").append(escapePythonString(e.getKey())).append("': ");
             Object v = e.getValue();
-            if (v instanceof String) sb.append("'").append(v).append("'");
+            if (v instanceof String) sb.append("'").append(escapePythonString((String) v)).append("'");
             else if (v instanceof Boolean) sb.append((Boolean) v ? "True" : "False");
             else if (v instanceof Number) sb.append(v);
-            else sb.append("'").append(v).append("'");
+            else sb.append("'").append(escapePythonString(String.valueOf(v))).append("'");
         }
         sb.append("}");
         return sb.toString();

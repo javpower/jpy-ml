@@ -221,7 +221,7 @@ class ModelIntegrationTest {
         String videoUrl = "https://github.com/ultralytics/assets/releases/download/v0.0.0/solutions_ci_demo.mp4";
         try (Model model = new Model(MODEL_PATH)) {
             AtomicInteger frameCount = new AtomicInteger(0);
-            model.predictVideo("0", frame -> {
+            model.predictVideo(videoUrl, frame -> {
                 int n = frameCount.incrementAndGet();
                 if (n <= 3) {
                     assertTrue(frame.count() >= 0, "Frame should have valid count");
@@ -246,7 +246,7 @@ class ModelIntegrationTest {
                 model.stopStream();
             }).start();
 
-            model.predictStream("0", config, true, sf -> {
+            model.predictStream(videoUrl, config, true, sf -> {
                 int n = frameCount.incrementAndGet();
                 assertNotNull(sf.getResult(), "Should have inference result");
                 assertTrue(sf.getFrameIndex() >= 0, "Should have valid frame index");

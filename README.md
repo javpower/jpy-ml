@@ -20,6 +20,8 @@ inference, training, validation, export, and ONNX Runtime all fully wired.
 - **Thread-Safe Engine** — singleton PythonEngine with ReadWriteLock, safe for concurrent use
 - **Type-Safe Java APIs** — strongly typed configs, results, and callbacks — no `Map` casting in user code
 - **Transparent Python Bridge** — `PythonEngine` for arbitrary Python/NumPy when you need it
+- **SLF4J Logging** — proper logging framework integration (Logback)
+- **Exception Hierarchy** — `JpyMlException` base class with typed exceptions
 
 ### Computer Vision (Ultralytics YOLO)
 - **Unified Model API** — single `Model` class for all architectures and tasks
@@ -31,6 +33,28 @@ inference, training, validation, export, and ONNX Runtime all fully wired.
 - **Epoch Callbacks** — real-time training progress with per-epoch loss/fitness metrics
 - **Per-Class Validation** — mAP50, mAP50-95, precision, recall broken down by class
 - **Image Annotation** — draw results on images via PIL, supports all task types
+- **Zero-Copy Bridge** — `TensorBufferPool` + `RawDetectionResult` for high-performance inference
+- **GPU Memory Management** — `warmup()`, `unload()`, `reload(device)` APIs
+
+### SAM 2 — Interactive Segmentation
+- **Point/Box Prompts** — segment objects by clicking or drawing bounding boxes
+- **Multiple Prompts** — combine positive and negative prompts
+- **SAM2Model** — dedicated model class for SAM 2 inference
+- **SAM2Result** — typed result with masks and confidence scores
+
+### OpenCV Integration
+- **OpenCVEngine** — Java API for common OpenCV operations
+- **Image I/O** — imread, imwrite with format detection
+- **Color Conversion** — BGR2GRAY, BGR2RGB, etc.
+- **Filtering** — Gaussian blur, Canny edge detection, thresholding
+- **Contours** — find and analyze contours
+- **Morphology** — erode, dilate, open, close operations
+
+### MediaPipe Integration
+- **MediaPipeEngine** — Java API for MediaPipe tasks
+- **Hand Tracking** — detect hands with 21 keypoints
+- **Face Mesh** — detect face landmarks (468 points)
+- **Pose Estimation** — detect body pose with 33 keypoints
 
 ---
 
@@ -88,7 +112,7 @@ java -version                   # Confirm: openjdk 17.0.19 Temurin
 ```bash
 mvn clean test
 
-# Expected: Tests run: 39, Failures: 0, Errors: 0, Skipped: 0
+# Expected: Tests run: 66, Failures: 0, Errors: 0, Skipped: 5
 ```
 
 ### 5. Run Demo
@@ -123,6 +147,11 @@ jpy-ml/
 │   ├── _jpy_validation.py              # Model validation
 │   ├── _jpy_annotation.py              # Image annotation
 │   ├── _jpy_streaming.py               # Video/webcam streaming inference
+│   ├── _jpy_sam2.py                    # SAM 2 interactive segmentation
+│   ├── _jpy_sam2_video.py              # SAM 2 video tracking
+│   ├── _jpy_sam3.py                    # SAM 3 concept segmentation
+│   ├── _jpy_opencv.py                  # OpenCV operations
+│   ├── _jpy_mediapipe.py               # MediaPipe hand/face/pose
 │   └── requirements.txt                # Python deps for production auto-install
 │
 ├── src/main/java/io/github/javpower/jpyml/
@@ -130,20 +159,26 @@ jpy-ml/
 │   ├── core/                           # Engine layer
 │   │   ├── PythonRuntime.java          # Python environment manager
 │   │   ├── PythonEngine.java           # Jep bridge (singleton, ReadWriteLock)
-│   │   ├── PythonModule.java           # Isolated module context
+│   │   ├── PythonModule.java           # Isolated module context (@Deprecated)
 │   │   └── PythonScriptLoader.java     # Thread-safe script loader
 │   ├── exception/                      # Custom exceptions
+│   │   ├── JpyMlException.java         # Base exception
 │   │   ├── InferenceException.java
 │   │   ├── ModelException.java
 │   │   ├── PythonException.java
-│   │   └── TrainingException.java
+│   │   ├── TrainingException.java
+│   │   └── ValidationException.java
 │   ├── ml/
 │   │   ├── model/                      # Core model API
 │   │   │   ├── Model.java              # **Unified entry point**
 │   │   │   ├── ModelConfig.java        # Inference config (conf, iou, imgsz, device, ...)
 │   │   │   ├── ModelInfo.java          # Model metadata
 │   │   │   ├── TaskType.java           # DETECT, SEGMENT, CLASSIFY, POSE, OBB
-│   │   │   └── Device.java             # CPU / MPS / GPU device selection
+│   │   │   ├── Device.java             # CPU / MPS / GPU device selection
+│   │   │   ├── SAM2Model.java          # SAM 2 interactive segmentation
+│   │   │   ├── SAM2VideoTracker.java   # SAM 2 video tracking
+│   │   │   ├── SAM3Model.java          # SAM 3 concept segmentation
+│   │   │   └── Prompt.java             # Point/Box/Mask/Text prompts
 │   │   ├── result/                     # Strongly typed results
 │   │   │   ├── InferenceResult.java    # Base interface
 │   │   │   ├── InferenceSpeed.java     # Pre/inference/postprocess timing
@@ -158,7 +193,14 @@ jpy-ml/
 │   │   │   ├── ClassificationResult.java
 │   │   │   ├── PoseResult.java
 │   │   │   ├── OBBResult.java
-│   │   │   └── OBBPrediction.java
+│   │   │   ├── OBBPrediction.java
+│   │   │   ├── SAM2Result.java         # SAM 2 segmentation result
+│   │   │   ├── SAM2VideoResult.java    # SAM 2 video tracking result
+│   │   │   ├── SAM3Result.java         # SAM 3 concept segmentation result
+│   │   │   ├── RawDetectionResult.java # Zero-copy detection result
+│   │   │   ├── RawInferenceResult.java # Zero-copy result interface
+│   │   │   ├── TensorBufferPool.java   # DirectByteBuffer pool
+│   │   │   └── StreamFrame.java        # Video frame with result
 │   │   ├── training/                   # Training API
 │   │   │   ├── TrainingConfig.java     # Full parameter builder
 │   │   │   ├── TrainingResult.java     # Training result + epoch metrics
@@ -175,14 +217,28 @@ jpy-ml/
 │   │   │   └── PerClassMetric.java     # Per-class mAP record
 │   │   └── annotation/                 # Image annotation
 │   │       └── ImageAnnotator.java     # Draw results on images
+│   ├── cv/                             # OpenCV integration
+│   │   └── OpenCVEngine.java           # OpenCV operations
+│   ├── mp/                             # MediaPipe integration
+│   │   └── MediaPipeEngine.java        # Hand/face/pose detection
 │   └── util/
 │       └── ImageUtils.java             # Image resize/crop/convert via PIL
+│
+├── .github/workflows/                  # CI/CD
+│   ├── ci.yml                          # Multi-platform CI
+│   └── release.yml                     # Maven Central release
 │
 └── src/test/java/io/github/javpower/jpyml/
     ├── QuickVerifyTest.java             # Core bridge tests (10 cases)
     ├── PythonEngineTest.java            # Engine tests (11 cases)
     ├── PythonRuntimeTest.java           # Platform detection (3 cases)
-    └── ModelIntegrationTest.java        # Full YOLO integration (10 cases)
+    ├── ModelIntegrationTest.java        # Full YOLO integration (18 cases)
+    ├── SAMIntegrationTest.java          # SAM 2/3 integration (9 cases)
+    └── ml/result/                       # Unit tests
+        ├── TensorBufferPoolTest.java    # Buffer pool tests (6 cases)
+        ├── BoundingBoxTest.java         # BoundingBox tests (10 cases)
+        ├── KeypointTest.java            # Keypoint tests (5 cases)
+        └── InferenceSpeedTest.java      # Speed tests (5 cases)
 ```
 
 ---
@@ -414,6 +470,126 @@ try (Model model = new Model("yolov8n.pt")) {
 }
 ```
 
+### Zero-Copy Inference (High Performance)
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    // Zero-copy prediction for detection tasks
+    RawDetectionResult result = model.predictRaw("photo.jpg");
+
+    // Option 1: Strongly-typed access (lazy-loaded)
+    for (ClassPrediction pred : result.getBoxes()) {
+        System.out.println(pred);
+    }
+
+    // Option 2: Raw buffer access (zero allocation)
+    FloatBuffer xyxy = result.getRawBoxesXYXY();  // (N, 4) float buffer
+    FloatBuffer conf = result.getRawConfidences();  // (N,) float buffer
+    IntBuffer cls = result.getRawClassIds();        // (N,) int buffer
+
+    for (int i = 0; i < result.getBoxCount(); i++) {
+        int offset = i * 4;
+        System.out.printf("Box: (%.1f,%.1f,%.1f,%.1f) conf=%.2f cls=%d%n",
+            xyxy.get(offset), xyxy.get(offset+1),
+            xyxy.get(offset+2), xyxy.get(offset+3),
+            conf.get(i), cls.get(i));
+    }
+
+    // Release buffers back to pool for reuse
+    result.release();
+}
+```
+
+### GPU Memory Management
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    // Warmup: run dummy inference to trigger CUDA kernel compilation
+    model.warmup();
+
+    // Inference...
+    model.predict("photo.jpg");
+
+    // Unload model from GPU to free memory
+    model.unload();
+
+    // Reload to GPU
+    model.reload("cuda:0");
+}
+```
+
+### SAM 2 — Interactive Segmentation
+
+```java
+// Point prompt: segment what's at (320, 240)
+try (SAM2Model sam = new SAM2Model("sam2.1_t.pt")) {
+    SAM2Result result = sam.predict("photo.jpg",
+        Prompt.point(320, 240)
+    );
+
+    for (Mask mask : result.getMasks()) {
+        System.out.println("Mask points: " + mask.getPointCount());
+    }
+    System.out.println("Best score: " + result.bestScore());
+}
+
+// Box prompt: segment inside bounding box
+SAM2Result result = sam.predict("photo.jpg",
+    Prompt.box(100, 100, 400, 400)
+);
+
+// Multiple prompts with negative points
+SAM2Result result = sam.predict("photo.jpg",
+    Prompt.point(200, 200),                          // positive
+    Prompt.point(400, 300, Prompt.Label.NEGATIVE)    // negative
+);
+```
+
+### OpenCV — Image Processing
+
+```java
+OpenCVEngine cv = new OpenCVEngine();
+
+// Read image info
+OpenCVEngine.ImageInfo info = cv.imread("photo.jpg");
+System.out.println(info.width() + "x" + info.height());
+
+// Color conversion
+cv.cvtColor("photo.jpg", "gray.jpg", "BGR2GRAY");
+
+// Edge detection
+cv.canny("photo.jpg", "edges.jpg", 100, 200);
+
+// Gaussian blur
+cv.blur("photo.jpg", "blurred.jpg", 15);
+
+// Find contours
+OpenCVEngine.ContourResult contours = cv.findContours("binary.jpg", "contours.jpg");
+System.out.println("Found " + contours.count() + " contours");
+```
+
+### MediaPipe — Hand/Face/Pose Detection
+
+```java
+MediaPipeEngine mp = new MediaPipeEngine();
+
+// Hand detection
+MediaPipeEngine.HandResult hands = mp.detectHands("hand.jpg");
+for (MediaPipeEngine.HandResult.Hand hand : hands.hands()) {
+    for (MediaPipeEngine.HandResult.Landmark lm : hand.landmarks()) {
+        System.out.printf("Landmark: (%.3f, %.3f, %.3f)%n", lm.x(), lm.y(), lm.z());
+    }
+}
+
+// Face mesh
+MediaPipeEngine.FaceResult faces = mp.detectFace("face.jpg");
+System.out.println("Faces found: " + faces.count());
+
+// Pose estimation
+MediaPipeEngine.PoseResult pose = mp.detectPose("pose.jpg");
+System.out.println("Pose landmarks: " + pose.count());
+```
+
 ### Basic Python Operations
 
 ```java
@@ -460,9 +636,11 @@ engine.exec("for i in range(3): print(f'item {i}')",
 │  Jep 4.3.1 (JNI bridge)                 │
 │  libjep.jnilib from pip install jep      │
 ├──────────────────────────────────────────┤
-│  Python Helper Scripts (6 .py files)     │
+│  Python Helper Scripts (12 .py files)    │
 │  jpy_load_model / jpy_extract_result /   │
-│  jpy_train / jpy_export / jpy_validate   │
+│  jpy_train / jpy_export / jpy_validate / │
+│  jpy_sam2 / jpy_sam3 / jpy_opencv /      │
+│  jpy_mediapipe / ...                     │
 ├──────────────────────────────────────────┤
 │  CPython 3.13 (.venv)                    │
 │  Ultralytics 8.4.45 + PyTorch 2.11       │
@@ -479,14 +657,19 @@ engine.exec("for i in range(3): print(f'item {i}')",
 
 ## Test Results
 
-All 41 tests passing:
+All 66 tests passing (5 skipped):
 
 | Test Suite | Tests | Description |
 |-----------|-------|-------------|
 | QuickVerifyTest | 10 | Basic Python bridge (eval, put/get, numpy, lists, dicts) |
 | PythonEngineTest | 11 | Engine features (multithreading, callbacks, modules) |
 | PythonRuntimeTest | 3 | Platform detection |
-| ModelIntegrationTest | 17 | Full YOLO integration (inference + batch + video + training + export) |
+| ModelIntegrationTest | 18 | Full YOLO integration (inference + batch + video + training + export) |
+| SAMIntegrationTest | 9 | SAM 2 interactive segmentation (4 pass, 5 skipped) |
+| TensorBufferPoolTest | 6 | Zero-copy buffer pool |
+| BoundingBoxTest | 10 | BoundingBox record |
+| KeypointTest | 5 | Keypoint record |
+| InferenceSpeedTest | 5 | InferenceSpeed record |
 
 ### ModelIntegrationTest details:
 
@@ -502,13 +685,28 @@ All 41 tests passing:
 | testModelClose | yolov8n.pt | — | Close lifecycle works |
 | testInferenceSpeed | yolov8n.pt | detect | Timing captured correctly |
 | testBatchPrediction | yolov8n.pt | detect | 3 images batch, 6 objects each |
-| testVideoPrediction | yolov8n.pt | detect | 62 frames streaming (HTTP video) |
+| testVideoPrediction | yolov8n.pt | detect | Video streaming with URL |
+| testStreamWithAnnotatedImage | yolov8n.pt | detect | Stream with annotated frames |
 | testYOLO26Detection | yolo26n.pt | detect | 5 objects (YOLO26 next-gen model) |
 | testOnnxInference | yolov8n.onnx | detect | ONNX Runtime inference, 5 objects |
-| testExportOnnx | yolov8n.pt | — | Export to ONNX (12.3 MB) |
+| testExportOnnx | yolov8n.pt | — | Export to ONNX |
 | testTrainWithCallback | yolov8n.pt | train | 2 epochs, callback + epoch metrics |
-| testValidate | yolov8n.pt | val | mAP50=0.60, 80 per-class metrics |
+| testValidate | yolov8n.pt | val | mAP50, per-class metrics |
 | testTrainThenPredict | best.pt | detect | Train then predict end-to-end |
+
+### SAMIntegrationTest details:
+
+| Test | Model | Prompt | Result |
+|------|-------|--------|--------|
+| testSAM2PointPrompt | sam2.1_t.pt | Point(320,240) | 1 mask, score=0.52 |
+| testSAM2BoxPrompt | sam2.1_t.pt | Box(100,100,400,400) | 1 mask |
+| testSAM2MultiplePrompts | sam2.1_t.pt | Point + Negative Point | 1 mask |
+| testSAM2ModelClose | sam2.1_t.pt | — | Close lifecycle works |
+| testSAM2VideoTracker | — | — | Skipped (needs refactoring) |
+| testSAM3TextPrompt | — | Text | Skipped (needs SAM3 model) |
+| testSAM3ExemplarPrompt | — | Exemplar | Skipped (needs SAM3 model) |
+| testSAM3FilterByScore | — | Text | Skipped (needs SAM3 model) |
+| testSAM3ModelClose | — | — | Skipped (needs SAM3 model) |
 
 ---
 
@@ -564,44 +762,26 @@ sdk use java 17.0.19-tem
 
 jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engine — many more are coming.
 
-### Next
-- [ ] PyTorch tensor zero-copy bridge for high-performance data transfer
+### Completed
 - [x] Batch inference API (`model.predict(List<String>)`)
 - [x] Webcam / video stream real-time inference
 - [x] python-build-standalone auto-download (zero Python install for end users)
+- [x] PyTorch tensor zero-copy bridge (`TensorBufferPool` + `RawDetectionResult`)
+- [x] GPU memory management and model warmup APIs
+- [x] SAM 2 interactive segmentation (point/box prompts)
+- [x] OpenCV integration (image processing)
+- [x] MediaPipe integration (hand/face/pose)
+- [x] SLF4J logging framework
+- [x] Exception hierarchy (`JpyMlException` base)
+- [x] CI/CD (GitHub Actions)
+
+### Next
+- [ ] SAM 2 video tracking (refactoring needed)
+- [ ] SAM 3 concept-level segmentation (needs model download)
 - [ ] Windows / Linux CI testing
+- [ ] Unit tests for all value types
 
 ### Planned ML Engines
-
-#### SAM 2 — Interactive Promptable Segmentation
-
-[SAM 2](https://ai.meta.com/sam2/) (Segment Anything Model 2) by Meta is a fundamentally different paradigm from YOLO. Instead of auto-detecting all objects, SAM 2 segments **what you point at** using interactive prompts:
-
-| Prompt Type | Description | Example |
-|------------|-------------|---------|
-| Point | Click a location to segment the object at that point | "Segment what's at (100, 200)" |
-| Box | Draw a bounding box to segment within it | "Segment inside [50,50,300,400]" |
-| Mask | Refine an existing mask with additional prompts | "Expand this mask to include the tail" |
-
-**Video Tracking** — SAM 2's killer feature: segment an object in frame 1, and it tracks that object through the entire video with temporal memory. Supports adding/removing prompts across frames for correction.
-
-**Planned API:**
-```java
-// Image segmentation with prompts
-SAM2Model sam = new SAM2Model("sam2_b.pt");
-SAM2Result result = sam.predict("photo.jpg",
-    Prompt.point(100, 200),          // segment at this point
-    Prompt.point(300, 400, Label.NEGATIVE)  // exclude this area
-);
-
-// Video object tracking
-SAM2VideoTracker tracker = sam.trackVideo("video.mp4");
-tracker.addPrompt(0, Prompt.box(50, 50, 300, 400));  // segment in frame 0
-SAM2VideoMask mask = tracker.propagate();              // track through all frames
-```
-
-**Models:** `sam2_t.pt`, `sam2_s.pt`, `sam2_b.pt`, `sam2_l.pt`, `sam2.1_t/s/b/l.pt`
-**Limitations:** Inference only — no training or export. Requires ultralytics with SAM2 module.
 
 #### SAM 3 — Concept-Level Segmentation
 
@@ -611,40 +791,30 @@ SAM2VideoMask mask = tracker.propagate();              // track through all fram
 |------|-------|-------------|
 | Text Prompt | "person", "red car", "bus" | Find and segment all instances matching the concept |
 | Image Exemplar | Provide bounding box of reference object | Find similar objects in the target image |
-| Semantic | No prompt needed | Segment everything and label semantically |
 
-This enables use cases impossible with SAM 2: "find all cars in this image" without manually clicking on each one, or "find objects similar to this one" across different images.
-
-**Planned API:**
+**API (implemented, needs SAM3 model):**
 ```java
-SAM3Model sam = new SAM3Model("sam3.pt");
+SAM3Model sam = new SAM3Model("sam3_t.pt");
 
 // Text-based concept segmentation
-SAM3Result result = sam.predict("street.jpg",
-    Prompt.text("person")     // segment all persons
-);
+SAM3Result result = sam.predictText("street.jpg", "person", "bus");
 
 // Image exemplar: "find things like this"
-SAM3Result result = sam.predict("target.jpg",
-    Prompt.exemplar("reference.jpg", BoundingBox.of(10, 20, 200, 300))
-);
+SAM3Result result = sam.predictExemplar("target.jpg", "reference.jpg",
+    new BoundingBox(10, 20, 200, 300));
 ```
 
-**Model:** `sam3.pt` (3.45 GB, requires HuggingFace access for weights)
-**Requirements:** ultralytics 8.3.237+, PyTorch 2.1+
-**Limitations:** Inference only. Weights are not auto-downloaded.
+**Models:** `sam3_t.pt`, `sam3_s.pt`, `sam3_b.pt` (from HuggingFace or ModelScope)
+**Requirements:** ultralytics 8.4.45+, PyTorch 2.1+
 
 #### Other Engines
 - [ ] **Transformers (HuggingFace)** — NLP, text generation, translation, embeddings
 - [ ] **Whisper** — speech-to-text, automatic speech recognition
 - [ ] **Stable Diffusion / FLUX** — image generation, inpainting, controlnet
 - [ ] **DeepSeek / LLM** — large language model inference
-- [ ] **OpenCV** — traditional computer vision pipelines
-- [ ] **MediaPipe** — hand tracking, face detection, gesture recognition
 
 ### Infrastructure
 - [ ] Async training with real-time streaming callbacks
-- [ ] GPU memory management and model warmup APIs
 - [ ] Model registry / hub integration (download from URL)
 - [ ] Spring Boot starter auto-configuration
 - [ ] GraalVM native image support

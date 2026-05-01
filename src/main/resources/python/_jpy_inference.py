@@ -150,3 +150,122 @@ def jpy_annotate(result, output_path=None):
         import cv2
         _, buf = cv2.imencode('.png', annotated)
         return buf.tobytes()
+
+
+def jpy_extract_result_ndarray(result, task_type, buffers=None):
+    """Extract result data using NDArray for zero-copy transfer.
+
+    Args:
+        result: Ultralytics inference result
+        task_type: Task type string (detect, segment, classify, pose, obb)
+        buffers: Optional dict of DirectNDArray buffers for zero-copy write
+
+    Returns:
+        dict with NDArray or list data
+    """
+    from jep import NDArray
+
+    data = {
+        'task': task_type,
+        'speed': {
+            'preprocess': result.speed.get('preprocess', 0),
+            'inference': result.speed.get('inference', 0),
+            'postprocess': result.speed.get('postprocess', 0),
+        },
+        'orig_shape': list(result.orig_shape) if result.orig_shape else [0, 0],
+        'path': result.path or '',
+        'names': dict(result.names) if result.names else {},
+    }
+
+    # Boxes (common to detect, segment, pose, obb)
+    if result.boxes is not None:
+        boxes = result.boxes
+        n = len(boxes)
+
+        if buffers is not None and 'boxes_xyxy' in buffers:
+            # Zero-copy mode: write to pre-allocated DirectNDArray buffers
+            buf_xyxy = buffers['boxes_xyxy']
+            buf_conf = buffers['boxes_conf']
+            buf_cls = buffers['boxes_cls']
+
+            # Get numpy arrays (shared memory with CPU tensor)
+            xyxy_np = boxes.xyxy.cpu().numpy().astype(np.float32)
+            conf_np = boxes.conf.cpu().numpy().astype(np.float32)
+            cls_np = boxes.cls.cpu().numpy().astype(np.int32)
+
+            # Get the underlying Java buffers
+            xyxy_buf = buf_xyxy.getData()
+            conf_buf = buf_conf.getData()
+            cls_buf = buf_cls.getData()
+
+            # Write data to buffers using numpy's tobytes()
+            xyxy_bytes = xyxy_np.tobytes()
+            conf_bytes = conf_np.tobytes()
+            cls_bytes = cls_np.tobytes()
+
+            # Copy bytes to Java buffers
+            for i in range(len(xyxy_bytes)):
+                xyxy_buf.put(i, xyxy_bytes[i])
+            for i in range(len(conf_bytes)):
+                conf_buf.put(i, conf_bytes[i])
+            for i in range(len(cls_bytes)):
+                cls_buf.put(i, cls_bytes[i])
+
+            data['boxes_count'] = n
+            data['boxes_ndarray'] = True
+        else:
+            # Standard NDArray mode
+            xyxy = boxes.xyxy.cpu().numpy().flatten().tolist()
+            conf = boxes.conf.cpu().numpy().flatten().tolist()
+            cls = boxes.cls.cpu().numpy().flatten().tolist()
+
+            data['boxes_xyxy'] = NDArray(xyxy, n, 4)
+            data['boxes_conf'] = NDArray(conf, n)
+            data['boxes_cls'] = NDArray(cls, n)
+            data['boxes_count'] = n
+            data['boxes_ndarray'] = True
+
+    # Masks (segmentation)
+    if result.masks is not None:
+        all_points = []
+        all_sizes = []
+        for mask in result.masks.xy:
+            points = mask.tolist()
+            all_points.extend(points)
+            all_sizes.append(len(points))
+        data['masks_points'] = NDArray([p for points in all_points for p in points])
+        data['masks_sizes'] = all_sizes
+
+    # Keypoints (pose)
+    if result.keypoints is not None:
+        kpts = result.keypoints
+        n_kpts = len(kpts)
+        xy = kpts.xy.cpu().numpy().flatten().tolist()
+        data['keypoints_xy'] = NDArray(xy, n_kpts, 17, 2)
+        if kpts.conf is not None:
+            conf = kpts.conf.cpu().numpy().flatten().tolist()
+            data['keypoints_conf'] = NDArray(conf, n_kpts, 17)
+
+    # Classification (probs)
+    if result.probs is not None:
+        probs = result.probs
+        top5 = probs.top5 if hasattr(probs, 'top5') else list(range(5))
+        top5conf = probs.top5conf.cpu().tolist() if hasattr(probs, 'top5conf') else [float(probs.data[i]) for i in top5]
+        data['classification'] = [
+            {'class_id': int(idx), 'confidence': float(conf)}
+            for idx, conf in zip(top5, top5conf)
+        ]
+
+    # OBB (oriented bounding boxes)
+    if result.obb is not None:
+        obb = result.obb
+        n_obb = len(obb)
+        xywhr = obb.xywhr.cpu().numpy().flatten().tolist()
+        conf = obb.conf.cpu().numpy().flatten().tolist()
+        cls = obb.cls.cpu().numpy().flatten().tolist()
+        data['obb_xywhr'] = NDArray(xywhr, n_obb, 5)
+        data['obb_conf'] = NDArray(conf, n_obb)
+        data['obb_cls'] = NDArray(cls, n_obb)
+        data['obb_count'] = n_obb
+
+    return data

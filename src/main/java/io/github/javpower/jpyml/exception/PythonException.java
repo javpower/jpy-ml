@@ -4,7 +4,7 @@ package io.github.javpower.jpyml.exception;
 /**
  * Exception thrown when Python execution fails.
  */
-public class PythonException extends RuntimeException {
+public class PythonException extends JpyMlException {
 
     public PythonException(String message) {
         super(message);
@@ -15,6 +15,6 @@ public class PythonException extends RuntimeException {
     }
 
     public PythonException(Throwable cause) {
-        super(cause);
+        super("Python execution failed", cause);
     }
 }

@@ -163,16 +163,20 @@ public class PythonEngine implements Closeable {
     public void exec(String code, Consumer<String> stdout, Consumer<String> stderr) throws JepException {
         ensureOpen();
         lock.writeLock().lock();
+        boolean stdoutCaptured = false;
+        boolean stderrCaptured = false;
         try {
             if (stdout != null) {
                 interpreter.exec("import sys, io");
                 interpreter.exec("_jpy_cap_stdout = sys.stdout");
                 interpreter.exec("sys.stdout = io.StringIO()");
+                stdoutCaptured = true;
             }
             if (stderr != null) {
                 interpreter.exec("import sys, io");
                 interpreter.exec("_jpy_cap_stderr = sys.stderr");
                 interpreter.exec("sys.stderr = io.StringIO()");
+                stderrCaptured = true;
             }
 
             interpreter.exec(code);
@@ -184,7 +188,6 @@ public class PythonEngine implements Closeable {
                         if (!line.isEmpty()) stdout.accept(line);
                     }
                 }
-                interpreter.exec("sys.stdout = _jpy_cap_stdout");
             }
             if (stderr != null) {
                 String err = interpreter.getValue("sys.stderr.getvalue()", String.class);
@@ -193,9 +196,21 @@ public class PythonEngine implements Closeable {
                         if (!line.isEmpty()) stderr.accept(line);
                     }
                 }
-                interpreter.exec("sys.stderr = _jpy_cap_stderr");
             }
         } finally {
+            // Always restore stdout/stderr even if an exception occurs
+            try {
+                if (stdoutCaptured) {
+                    interpreter.exec("sys.stdout = _jpy_cap_stdout");
+                }
+            } catch (Exception ignored) {
+            }
+            try {
+                if (stderrCaptured) {
+                    interpreter.exec("sys.stderr = _jpy_cap_stderr");
+                }
+            } catch (Exception ignored) {
+            }
             lock.writeLock().unlock();
         }
     }
@@ -254,12 +269,13 @@ public class PythonEngine implements Closeable {
         ensureOpen();
         lock.writeLock().lock();
         try {
-            var is = getClass().getClassLoader().getResourceAsStream(resourcePath);
-            if (is == null) {
-                throw new JepException("Resource not found: " + resourcePath);
+            try (var is = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
+                if (is == null) {
+                    throw new JepException("Resource not found: " + resourcePath);
+                }
+                String script = new String(is.readAllBytes());
+                interpreter.exec(script);
             }
-            String script = new String(is.readAllBytes());
-            interpreter.exec(script);
         } catch (java.io.IOException e) {
             throw new JepException("Failed to read resource: " + resourcePath, e);
         } finally {

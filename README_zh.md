@@ -22,6 +22,8 @@
 - **线程安全引擎** — 单例 PythonEngine + ReadWriteLock，支持并发调用
 - **类型安全 API** — 强类型配置、结果、回调 —— 用户代码无需 `Map` 强转
 - **透明 Python 桥接** — 需要时可通过 `PythonEngine` 直接调用任意 Python/NumPy
+- **SLF4J 日志** — 集成 Logback 日志框架
+- **异常层次** — `JpyMlException` 基类 + 类型化异常
 
 ### 计算机视觉（Ultralytics YOLO）
 - **统一 Model API** — 单一 `Model` 类支持所有架构和任务
@@ -33,6 +35,28 @@
 - **Epoch 回调** — 实时训练进度，逐 epoch 的 loss/fitness 指标
 - **逐类验证** — mAP50、mAP50-95、precision、recall 按类别细分
 - **图像标注** — 通过 PIL 绘制推理结果，支持所有任务类型
+- **零拷贝桥接** — `TensorBufferPool` + `RawDetectionResult` 高性能推理
+- **GPU 内存管理** — `warmup()`、`unload()`、`reload(device)` API
+
+### SAM 2 — 交互式分割
+- **点/框提示** — 通过点击或绘制边界框分割对象
+- **多提示组合** — 组合正向和负向提示
+- **SAM2Model** — 专用 SAM 2 推理模型类
+- **SAM2Result** — 带 mask 和置信度的类型化结果
+
+### OpenCV 集成
+- **OpenCVEngine** — OpenCV 操作的 Java API
+- **图像 I/O** — imread、imwrite，支持格式检测
+- **颜色转换** — BGR2GRAY、BGR2RGB 等
+- **滤波** — 高斯模糊、Canny 边缘检测、阈值处理
+- **轮廓** — 查找和分析轮廓
+- **形态学** — 膨胀、腐蚀、开运算、闭运算
+
+### MediaPipe 集成
+- **MediaPipeEngine** — MediaPipe 任务的 Java API
+- **手部追踪** — 检测手部 21 个关键点
+- **面部网格** — 检测面部 468 个关键点
+- **姿态估计** — 检测身体 33 个关键点
 
 ---
 
@@ -88,7 +112,7 @@ java -version                   # 确认: openjdk 17.0.19 Temurin
 ```bash
 mvn clean test
 
-# 预期: Tests run: 39, Failures: 0, Errors: 0, Skipped: 0
+# 预期: Tests run: 66, Failures: 0, Errors: 0, Skipped: 5
 ```
 
 ---

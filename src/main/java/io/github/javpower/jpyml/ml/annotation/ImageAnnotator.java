@@ -4,6 +4,7 @@ import io.github.javpower.jpyml.ml.model.TaskType;
 import io.github.javpower.jpyml.ml.result.*;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
+import io.github.javpower.jpyml.exception.InferenceException;
 import jep.JepException;
 
 import java.awt.*;
@@ -46,7 +47,7 @@ public class ImageAnnotator {
             engine.exec("_jpy_ann_result = jpy_annotate(_jpy_ann_input, _jpy_ann_output, _jpy_ann_boxes, _jpy_ann_task)");
             return engine.eval("_jpy_ann_result");
         } catch (JepException e) {
-            throw new RuntimeException("Annotation failed", e);
+            throw new InferenceException("Annotation failed", e);
         }
     }
 
