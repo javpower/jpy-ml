@@ -4,6 +4,7 @@ import io.github.javpower.jpyml.exception.InferenceException;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Result of SAM 2 interactive segmentation.
@@ -57,4 +58,7 @@ public record SAM2Result(
         }
         return Collections.max(scores);
     }
+
+    public String toJson() { return ResultSerializer.toJson(this); }
+    public Map<String, Object> toMap() { return ResultSerializer.toMap(this); }
 }

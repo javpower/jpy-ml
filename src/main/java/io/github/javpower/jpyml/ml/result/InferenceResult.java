@@ -11,4 +11,7 @@ public interface InferenceResult {
     TaskType getTaskType();
     Map<Integer, String> getClassNames();
     int count();
+
+    default String toJson() { return ResultSerializer.toJson(this); }
+    default Map<String, Object> toMap() { return ResultSerializer.toMap(this); }
 }

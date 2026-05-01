@@ -5,6 +5,7 @@ import io.github.javpower.jpyml.exception.InferenceException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Result of SAM 3 concept-level segmentation.
@@ -80,4 +81,7 @@ public record SAM3Result(
 
         return new SAM3Result(sourcePath, filteredMasks, filteredScores, filteredClassIds);
     }
+
+    public String toJson() { return ResultSerializer.toJson(this); }
+    public Map<String, Object> toMap() { return ResultSerializer.toMap(this); }
 }

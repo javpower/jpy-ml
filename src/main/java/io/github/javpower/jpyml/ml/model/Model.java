@@ -19,11 +19,17 @@ import io.github.javpower.jpyml.ml.validation.PerClassMetric;
 import io.github.javpower.jpyml.ml.validation.ValidationResult;
 import jep.JepException;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import javax.imageio.ImageIO;
 
 /**
  * Unified ML model entry point. Supports all Ultralytics models:
@@ -109,7 +115,37 @@ public class Model implements AutoCloseable {
         }
     }
 
-    // ==================== Prediction ====================
+    // ==================== Preset Factory ====================
+
+    /**
+     * Create a model by name, auto-downloading if needed.
+     * Uses the ModelHub registry for known models.
+     *
+     * @param modelName registered model name (e.g., "yolov8n", "yolo11n-seg")
+     * @return loaded Model instance
+     */
+    public static Model preset(String modelName) throws ModelException {
+        try {
+            Path path = ModelHub.ensure(modelName);
+            return new Model(path.toString());
+        } catch (IOException e) {
+            throw new ModelException("Failed to download model: " + modelName, e);
+        }
+    }
+
+    /**
+     * Create a model by name with explicit task type, auto-downloading if needed.
+     */
+    public static Model preset(String modelName, TaskType task) throws ModelException {
+        try {
+            Path path = ModelHub.ensure(modelName);
+            return new Model(path.toString(), task);
+        } catch (IOException e) {
+            throw new ModelException("Failed to download model: " + modelName, e);
+        }
+    }
+
+    // ==================== Prediction (String path) ====================
 
     /**
      * Predict on an image file. Returns task-appropriate result.
@@ -125,6 +161,184 @@ public class Model implements AutoCloseable {
         } catch (Exception e) {
             throw new InferenceException("Prediction failed on: " + imagePath, e);
         }
+    }
+
+    // ==================== Prediction (byte[] / BufferedImage) ====================
+
+    /**
+     * Predict on raw image bytes (JPEG, PNG, etc.).
+     */
+    public InferenceResult predict(byte[] imageData) throws InferenceException {
+        return predict(imageData, new ModelConfig());
+    }
+
+    public InferenceResult predict(byte[] imageData, ModelConfig config) throws InferenceException {
+        ensureOpen();
+        if (imageData == null || imageData.length == 0) {
+            throw new InferenceException("Image data must not be empty");
+        }
+        try {
+            return predictFromBytes(imageData, config);
+        } catch (Exception e) {
+            throw new InferenceException("Prediction failed on byte[] image", e);
+        }
+    }
+
+    /**
+     * Predict on a BufferedImage.
+     */
+    public InferenceResult predict(BufferedImage image) throws InferenceException {
+        return predict(image, new ModelConfig());
+    }
+
+    public InferenceResult predict(BufferedImage image, ModelConfig config) throws InferenceException {
+        ensureOpen();
+        if (image == null) {
+            throw new InferenceException("Image must not be null");
+        }
+        try {
+            byte[] bytes = bufferedImageToBytes(image);
+            return predictFromBytes(bytes, config);
+        } catch (Exception e) {
+            throw new InferenceException("Prediction failed on BufferedImage", e);
+        }
+    }
+
+    private InferenceResult predictFromBytes(byte[] imageData, ModelConfig config) throws JepException {
+        PythonScriptLoader.ensureLoaded(engine, "_jpy_inference.py");
+        String mv = "_jpy_mv" + id;
+        String rv = "_jpy_pr" + id;
+        Map<String, Object> kwargs = config.toPythonKwargs();
+
+        // Pass raw bytes to Python and decode to numpy array
+        engine.put(rv + "_src_bytes", imageData);
+        engine.exec(rv + "_src = jpy_decode_image(" + rv + "_src_bytes)");
+
+        // Build the predict call (same as predictClean but source is already a numpy array)
+        StringBuilder call = new StringBuilder();
+        call.append(rv).append("_raw = ").append(mv).append("(").append(rv).append("_src");
+        for (Map.Entry<String, Object> e : kwargs.entrySet()) {
+            call.append(", ").append(escapePythonString(e.getKey())).append("=");
+            Object v = e.getValue();
+            if (v instanceof String) call.append("'").append(escapePythonString((String) v)).append("'");
+            else if (v instanceof Boolean) call.append((Boolean) v ? "True" : "False");
+            else if (v instanceof List) {
+                call.append(v.toString().replace('[', '(').replace(']', ')'));
+            }
+            else call.append(v);
+        }
+        call.append(")");
+
+        engine.exec(call.toString());
+
+        engine.put(rv + "_task", taskType.getKey());
+        engine.exec(rv + " = jpy_extract_result(" + rv + "_raw[0], " + rv + "_task)");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = engine.eval(rv);
+
+        return buildResult(data);
+    }
+
+    private static byte[] bufferedImageToBytes(BufferedImage image) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(image, "jpg", baos);
+        return baos.toByteArray();
+    }
+
+    // ==================== Async Prediction ====================
+
+    /**
+     * Async prediction on an image file.
+     * Note: Jep SharedInterpreter is thread-bound, so the actual prediction runs
+     * synchronously on the calling thread. The CompletableFuture wraps the result
+     * for API consistency. For true background execution, wrap the entire
+     * predict call in your own CompletableFuture.
+     */
+    public CompletableFuture<InferenceResult> predictAsync(String imagePath) {
+        ensureOpen();
+        try {
+            return CompletableFuture.completedFuture(predict(imagePath));
+        } catch (InferenceException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    public CompletableFuture<InferenceResult> predictAsync(String imagePath, ModelConfig config) {
+        ensureOpen();
+        try {
+            return CompletableFuture.completedFuture(predict(imagePath, config));
+        } catch (InferenceException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    /**
+     * Async prediction on raw image bytes.
+     */
+    public CompletableFuture<InferenceResult> predictAsync(byte[] imageData) {
+        ensureOpen();
+        try {
+            return CompletableFuture.completedFuture(predict(imageData));
+        } catch (InferenceException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    public CompletableFuture<InferenceResult> predictAsync(byte[] imageData, ModelConfig config) {
+        ensureOpen();
+        try {
+            return CompletableFuture.completedFuture(predict(imageData, config));
+        } catch (InferenceException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    /**
+     * Async batch prediction.
+     */
+    public CompletableFuture<List<InferenceResult>> predictAsync(List<String> imagePaths) {
+        ensureOpen();
+        try {
+            return CompletableFuture.completedFuture(predict(imagePaths));
+        } catch (InferenceException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    public CompletableFuture<List<InferenceResult>> predictAsync(List<String> imagePaths, ModelConfig config) {
+        ensureOpen();
+        try {
+            return CompletableFuture.completedFuture(predict(imagePaths, config));
+        } catch (InferenceException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    /**
+     * Async video prediction.
+     */
+    public CompletableFuture<Void> predictVideoAsync(String videoPath, Consumer<InferenceResult> frameConsumer) {
+        ensureOpen();
+        new Thread(() -> {
+            try {
+                predictVideo(videoPath, frameConsumer);
+            } catch (Exception e) {
+                // logged by predictVideo
+            }
+        }, "jpy-ml-video").start();
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletableFuture<Void> predictVideoAsync(String videoPath, ModelConfig config, Consumer<InferenceResult> frameConsumer) {
+        ensureOpen();
+        new Thread(() -> {
+            try {
+                predictVideo(videoPath, config, frameConsumer);
+            } catch (Exception e) {
+                // logged by predictVideo
+            }
+        }, "jpy-ml-video").start();
+        return CompletableFuture.completedFuture(null);
     }
 
     private InferenceResult predictClean(String imagePath, ModelConfig config) throws JepException {

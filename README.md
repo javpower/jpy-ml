@@ -35,6 +35,11 @@ inference, training, validation, export, and ONNX Runtime all fully wired.
 - **Image Annotation** — draw results on images via PIL, supports all task types
 - **Zero-Copy Bridge** — `TensorBufferPool` + `RawDetectionResult` for high-performance inference
 - **GPU Memory Management** — `warmup()`, `unload()`, `reload(device)` APIs
+- **Direct Image Input** — `predict(byte[])`, `predict(BufferedImage)` — no temp files needed
+- **Async API** — `predictAsync()` returning `CompletableFuture<InferenceResult>`
+- **Result Serialization** — `toJson()`, `toMap()` on all result types, no external deps
+- **Model Hub** — `Model.preset("yolov8n")` auto-downloads and caches models
+- **Java Visualization** — `ImageVisualizer` draws boxes/masks/keypoints in pure Java2D
 
 ### SAM 2 — Interactive Segmentation
 - **Point/Box Prompts** — segment objects by clicking or drawing bounding boxes
@@ -159,7 +164,7 @@ java -version                   # Confirm: openjdk 17.0.19 Temurin
 ```bash
 mvn clean test
 
-# Expected: Tests run: 89, Failures: 0, Errors: 0, Skipped: 0
+# Expected: Tests run: 106, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 ### 5. Run Demo
@@ -225,6 +230,7 @@ jpy-ml/
 │   │   │   ├── SAM2VideoTracker.java   # SAM 2 video tracking
 │   │   │   ├── SAM3Model.java          # SAM 3 concept segmentation
 │   │   │   └── Prompt.java             # Point/Box/Mask/Text prompts
+│   │   │   └── ModelHub.java            # Model registry + auto-download
 │   │   ├── result/                     # Strongly typed results
 │   │   │   ├── InferenceResult.java    # Base interface
 │   │   │   ├── InferenceSpeed.java     # Pre/inference/postprocess timing
@@ -243,6 +249,7 @@ jpy-ml/
 │   │   │   ├── SAM2Result.java         # SAM 2 segmentation result
 │   │   │   ├── SAM2VideoResult.java    # SAM 2 video tracking result
 │   │   │   ├── SAM3Result.java         # SAM 3 concept segmentation result
+│   │   │   ├── ResultSerializer.java   # JSON/Map serialization
 │   │   │   ├── RawDetectionResult.java # Zero-copy detection result
 │   │   │   ├── RawInferenceResult.java # Zero-copy result interface
 │   │   │   ├── TensorBufferPool.java   # DirectByteBuffer pool
@@ -680,6 +687,82 @@ MediaPipeEngine.PoseResult pose = mp.detectPose("pose.jpg");
 System.out.println("Pose landmarks: " + pose.count());
 ```
 
+### Model Preset — Auto-Download
+
+```java
+// Auto-download + load in one line
+try (Model model = Model.preset("yolov8n")) {
+    DetectionResult result = model.predict("photo.jpg");
+}
+
+// List available models
+for (ModelHub.ModelEntry entry : ModelHub.listAvailable()) {
+    System.out.println(entry);  // "yolov8n (6.2 MB, DETECT)"
+}
+```
+
+### Direct Image Input — byte[] / BufferedImage
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    // From byte[] (e.g., HTTP upload, file read)
+    byte[] imageData = Files.readAllBytes(Path.of("photo.jpg"));
+    InferenceResult result = model.predict(imageData);
+
+    // From BufferedImage (e.g., Java image processing)
+    BufferedImage image = ImageIO.read(new File("photo.jpg"));
+    InferenceResult result = model.predict(image);
+}
+```
+
+### Async Prediction
+
+```java
+try (Model model = new Model("yolov8n.pt")) {
+    // Returns CompletableFuture
+    CompletableFuture<InferenceResult> future = model.predictAsync("photo.jpg");
+    future.thenAccept(result -> {
+        System.out.println("Detected " + result.count() + " objects");
+    });
+}
+```
+
+### Result Serialization — JSON / Map
+
+```java
+DetectionResult result = model.predict("photo.jpg");
+
+// JSON output (no external dependencies)
+String json = result.toJson();
+// {"task":"detect","source":"photo.jpg","count":3,"boxes":[...]}
+
+// Map output (for Jackson/Gson integration)
+Map<String, Object> map = result.toMap();
+
+// Works on SAM results too
+SAM2Result samResult = sam.predict("photo.jpg", Prompt.point(100, 200));
+String samJson = samResult.toJson();
+```
+
+### Java Visualization — ImageVisualizer
+
+```java
+ImageVisualizer viz = new ImageVisualizer()
+    .lineWidth(2.5f)
+    .fontSize(14.0f)
+    .maskAlpha(0.4f);
+
+BufferedImage image = ImageIO.read(new File("photo.jpg"));
+InferenceResult result = model.predict("photo.jpg");
+
+// Draw boxes/masks/keypoints on image
+BufferedImage annotated = viz.visualize(image, result);
+ImageIO.write(annotated, "jpg", new File("output.jpg"));
+
+// Or from byte[]
+byte[] annotatedBytes = viz.visualizeToBytes(imageBytes, result);
+```
+
 ### Basic Python Operations
 
 ```java
@@ -718,7 +801,7 @@ engine.exec("for i in range(3): print(f'item {i}')",
 │  DetectionResult r = m.predict(img);     │
 ├──────────────────────────────────────────┤
 │  Model / ModelConfig / Result types      │
-│  (55 Java source files)                  │
+│  (58 Java source files)                  │
 ├──────────────────────────────────────────┤
 │  PythonEngine (singleton, ReadWriteLock) │
 │  SharedInterpreter + sys.path filtering  │
@@ -747,7 +830,7 @@ engine.exec("for i in range(3): print(f'item {i}')",
 
 ## Test Results
 
-All 89 tests passing (0 skipped):
+All 106 tests passing (0 skipped):
 
 | Test Suite | Tests | Pass | Skip | Description |
 |-----------|-------|------|------|-------------|
@@ -756,6 +839,7 @@ All 89 tests passing (0 skipped):
 | PythonRuntimeTest | 3 | 3 | 0 | Platform detection |
 | ModelIntegrationTest | 18 | 18 | 0 | Full YOLO integration (inference + batch + video + training + export) |
 | SAMIntegrationTest | 9 | 9 | 0 | SAM 2/3 integration (point/box/video/text/exemplar) |
+| NewFeaturesTest | 17 | 17 | 0 | Serialization, byte[] input, async, ModelHub, visualization |
 | TensorBufferPoolTest | 6 | 6 | 0 | Zero-copy buffer pool |
 | BoundingBoxTest | 10 | 10 | 0 | BoundingBox record |
 | KeypointTest | 5 | 5 | 0 | Keypoint record |

@@ -267,3 +267,19 @@ def jpy_extract_result_ndarray(result, task_type, buffers=None):
         data['obb_count'] = n_obb
 
     return data
+
+
+def jpy_decode_image(raw_bytes):
+    """Decode raw image bytes to a numpy array suitable for model inference.
+
+    Args:
+        raw_bytes: Python bytes or jep.PyJArray (Java byte[])
+
+    Returns:
+        numpy ndarray (H, W, 3) in BGR format
+    """
+    import cv2
+    # Jep converts Java byte[] (signed -128..127) to PyJArray
+    # Use numpy to handle the conversion correctly
+    arr = np.array(raw_bytes, dtype=np.int8).astype(np.uint8)
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
