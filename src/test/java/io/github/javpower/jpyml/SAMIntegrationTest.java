@@ -22,20 +22,13 @@ class SAMIntegrationTest {
     private static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
     private static final String TEST_IMAGE = "bus.jpg";
     private static final String SAM_MODEL = "sam2.1_t.pt";  // Use tiny model for fast testing
+    private static final String SAM3_MODEL = "sam3.pt";  // Use tiny model for fast testing
 
     @BeforeAll
     static void init() throws Exception {
         Path pythonBin = PROJECT_ROOT.resolve(".venv/bin/python3");
         Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.13/site-packages/jep/libjep.jnilib");
         PythonRuntime.init(pythonBin, jepLib);
-        PythonScriptLoader.reset();  // Clear cached scripts to pick up changes
-
-        // Verify function signatures
-        PythonEngine engine = PythonEngine.getInstance();
-        PythonScriptLoader.ensureLoaded(engine, "_jpy_sam2.py");
-        engine.exec("import inspect");
-        String sig = engine.eval("str(inspect.signature(jpy_sam2_predict))");
-        System.out.println("jpy_sam2_predict signature: " + sig);
     }
 
     @Test
@@ -106,7 +99,7 @@ class SAMIntegrationTest {
     @Order(20)
     @Disabled("SAM2 video tracking needs refactoring - tracker API not compatible with current implementation")
     void testSAM2VideoTracker() throws Exception {
-        String videoUrl = "https://github.com/ultralytics/assets/releases/download/v0.0.0/solutions_ci_demo.mp4";
+        String videoUrl = "solutions_ci_demo.mp4";
 
         try (SAM2Model sam = new SAM2Model(SAM_MODEL)) {
             try (SAM2VideoTracker tracker = sam.trackVideo(videoUrl, Prompt.box(100, 100, 400, 400))) {
@@ -128,9 +121,9 @@ class SAMIntegrationTest {
 
     @Test
     @Order(30)
-    @Disabled("SAM3 text prompts require SAM3 model - SAM2.1_t does not support 'texts' argument")
+    @Disabled("SAM3 text prompts require SAM3 model")
     void testSAM3TextPrompt() throws Exception {
-        try (SAM3Model sam = new SAM3Model(SAM_MODEL)) {
+        try (SAM3Model sam = new SAM3Model(SAM3_MODEL)) {
             SAM3Result result = sam.predictText(TEST_IMAGE, "person", "bus");
 
             assertNotNull(result);
@@ -148,7 +141,7 @@ class SAMIntegrationTest {
     @Order(31)
     @Disabled("SAM3 exemplar prompts require SAM3 model")
     void testSAM3ExemplarPrompt() throws Exception {
-        try (SAM3Model sam = new SAM3Model(SAM_MODEL)) {
+        try (SAM3Model sam = new SAM3Model(SAM3_MODEL)) {
             BoundingBox exemplarBox = new BoundingBox(100, 100, 300, 300);
             SAM3Result result = sam.predictExemplar(TEST_IMAGE, TEST_IMAGE, exemplarBox);
 
@@ -163,7 +156,7 @@ class SAMIntegrationTest {
     @Order(32)
     @Disabled("SAM3 text prompts require SAM3 model")
     void testSAM3FilterByScore() throws Exception {
-        try (SAM3Model sam = new SAM3Model(SAM_MODEL)) {
+        try (SAM3Model sam = new SAM3Model(SAM3_MODEL)) {
             SAM3Result result = sam.predictText(TEST_IMAGE, "person");
 
             assertNotNull(result);
@@ -181,7 +174,7 @@ class SAMIntegrationTest {
     @Order(33)
     @Disabled("SAM3 requires ultralytics with SAM3 support - not available in current version")
     void testSAM3ModelClose() throws Exception {
-        SAM3Model sam = new SAM3Model(SAM_MODEL);
+        SAM3Model sam = new SAM3Model(SAM3_MODEL);
         assertFalse(sam.isClosed());
         sam.close();
         assertTrue(sam.isClosed());
