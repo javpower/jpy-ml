@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>jpy-ml — 生产级 Java AI/ML 框架</title>
+<meta name="description" content="One dependency. One line to load. One line to infer. jpy-ml embeds the full Python ML ecosystem directly into the JVM.">
+<meta name="keywords" content="Java,ML,YOLO,PyTorch,SAM,segmentation,detection,pose,ONNX,Ultralytics,Jep">
+<meta property="og:title" content="jpy-ml — 生产级 Java AI/ML 框架">
+<meta property="og:description" content="6 行 Java 代码实现检测、分割、跟踪、分类。嵌入式 Python 运行时，零网络延迟。">
+<meta property="og:url" content="https://javpower.github.io/jpy-ml">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0f;--bg2:#111118;--bg3:#1a1a24;--bg4:#22222f;
+  --text:#e4e4ef;--text2:#a0a0b8;--text3:#6b6b82;
+  --accent:#6c5ce7;--accent2:#a855f7;--accent3:#c084fc;
+  --green:#00d68f;--green2:#00b377;
+  --blue:#3b82f6;--cyan:#06b6d4;
+  --orange:#f59e0b;--red:#ef4444;--pink:#ec4899;
+  --radius:12px;--radius-lg:20px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;
+  --mono:'SF Mono','Fira Code','JetBrains Mono',Consolas,monospace;
+  --shadow:0 4px 24px rgba(0,0,0,.4);
+  --shadow-lg:0 8px 48px rgba(0,0,0,.5);
+}
+html{scroll-behavior:smooth;font-size:16px}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:#fff}
+::selection{background:var(--accent);color:#fff}
+
+/* ─── Nav ─── */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;transition:background .3s,box-shadow .3s}
+.nav.scrolled{background:rgba(10,10,15,.85);backdrop-filter:blur(16px);box-shadow:0 1px 0 rgba(255,255,255,.06)}
+.nav-logo{font-size:1.3rem;font-weight:700;color:#fff;letter-spacing:-.02em;display:flex;align-items:center;gap:.5rem}
+.nav-logo span{background:linear-gradient(135deg,var(--accent),var(--accent3));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav-links{display:flex;gap:2rem;align-items:center}
+.nav-links a{color:var(--text2);font-size:.9rem;transition:color .2s}
+.nav-links a:hover{color:#fff}
+.nav-repo{display:flex;align-items:center;gap:.4rem;background:var(--bg3);padding:.45rem 1rem;border-radius:8px;border:1px solid rgba(255,255,255,.08);font-size:.85rem;color:var(--text2)}
+.nav-repo:hover{background:var(--bg4);color:#fff}
+.nav-repo svg{width:18px;height:18px;fill:currentColor}
+.hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:4px}
+.hamburger span{width:22px;height:2px;background:var(--text2);border-radius:2px;transition:.3s}
+
+/* ─── Hero ─── */
+.hero{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6rem 2rem 4rem;overflow:hidden}
+.hero-glow{position:absolute;top:-20%;left:50%;transform:translateX(-50%);width:800px;height:800px;background:radial-gradient(circle,rgba(108,92,231,.15) 0%,rgba(168,85,247,.08) 40%,transparent 70%);pointer-events:none;animation:glowPulse 8s ease-in-out infinite}
+.hero-glow2{position:absolute;bottom:-10%;right:-10%;width:600px;height:600px;background:radial-gradient(circle,rgba(0,214,143,.08) 0%,transparent 60%);pointer-events:none;animation:glowPulse 10s ease-in-out infinite reverse}
+@keyframes glowPulse{0%,100%{opacity:.6;transform:translateX(-50%) scale(1)}50%{opacity:1;transform:translateX(-50%) scale(1.1)}}
+.hero-badge{display:inline-flex;align-items:center;gap:.5rem;background:var(--bg3);border:1px solid rgba(108,92,231,.3);padding:.4rem 1rem;border-radius:20px;font-size:.8rem;color:var(--accent3);margin-bottom:1.5rem;animation:fadeInUp .6s ease}
+.hero-badge .dot{width:6px;height:6px;background:var(--green);border-radius:50%;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.hero h1{font-size:clamp(3rem,8vw,5.5rem);font-weight:800;letter-spacing:-.04em;line-height:1.1;margin-bottom:.8rem;animation:fadeInUp .6s ease .1s both}
+.hero h1 .gradient{background:linear-gradient(135deg,#fff 30%,var(--accent3) 70%,var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero .subtitle{font-size:clamp(1.1rem,2.5vw,1.5rem);color:var(--text2);max-width:600px;margin:0 auto 2.5rem;font-weight:400;animation:fadeInUp .6s ease .2s both}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.hero-code{position:relative;width:100%;max-width:640px;margin:0 auto 2.5rem;animation:fadeInUp .6s ease .3s both}
+.hero-code pre{background:var(--bg2);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius);padding:1.5rem;text-align:left;font-family:var(--mono);font-size:.88rem;line-height:1.8;overflow-x:auto;position:relative}
+.hero-code pre::before{content:'Java';position:absolute;top:.6rem;right:.8rem;font-size:.7rem;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.05em}
+.hero-code .dots{display:flex;gap:6px;padding:0 0 1rem .2rem}
+.hero-code .dots span{width:10px;height:10px;border-radius:50%}
+.hero-code .dots span:nth-child(1){background:#ef4444}
+.hero-code .dots span:nth-child(2){background:#f59e0b}
+.hero-code .dots span:nth-child(3){background:#22c55e}
+.code-kw{color:#c084fc}.code-type{color:#60a5fa}.code-str{color:#34d399}.code-num{color:#f59e0b}.code-cmt{color:#4a4a5e;font-style:italic}.code-fn{color:#67e8f9}
+
+.hero-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;animation:fadeInUp .6s ease .4s both}
+.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.75rem 1.8rem;border-radius:10px;font-size:.95rem;font-weight:600;transition:all .25s;cursor:pointer;border:none}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 20px rgba(108,92,231,.3)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(108,92,231,.45);color:#fff}
+.btn-secondary{background:var(--bg3);color:var(--text);border:1px solid rgba(255,255,255,.1)}
+.btn-secondary:hover{background:var(--bg4);border-color:rgba(255,255,255,.2);color:#fff}
+
+/* ─── Section base ─── */
+.section{padding:6rem 2rem;max-width:1200px;margin:0 auto}
+.section-tag{font-size:.75rem;text-transform:uppercase;letter-spacing:.15em;color:var(--accent3);margin-bottom:.5rem;font-weight:600}
+.section-title{font-size:clamp(1.8rem,4vw,2.5rem);font-weight:700;margin-bottom:.6rem;letter-spacing:-.02em}
+.section-desc{color:var(--text2);max-width:600px;font-size:1.05rem;margin-bottom:3rem}
+
+/* ─── Compare ─── */
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-top:2rem}
+.compare-card{border-radius:var(--radius-lg);padding:2rem;border:1px solid rgba(255,255,255,.06)}
+.compare-old{background:var(--bg2)}
+.compare-new{background:linear-gradient(135deg,rgba(108,92,231,.08),rgba(168,85,247,.05));border-color:rgba(108,92,231,.2)}
+.compare-card h3{font-size:1.1rem;margin-bottom:1.2rem;display:flex;align-items:center;gap:.5rem}
+.compare-card h3 .icon{font-size:1.2rem}
+.compare-card ul{list-style:none;display:flex;flex-direction:column;gap:.8rem}
+.compare-card li{display:flex;align-items:flex-start;gap:.6rem;font-size:.92rem;color:var(--text2);line-height:1.5}
+.compare-card li .li-icon{flex-shrink:0;font-size:1rem;margin-top:.1rem}
+.compare-new li{color:var(--text)}
+.compare-new .li-icon{color:var(--green)}
+
+/* ─── Engines ─── */
+.engine-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
+.engine-card{background:var(--bg2);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius-lg);padding:2rem;transition:all .3s;position:relative;overflow:hidden}
+.engine-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent3));opacity:0;transition:opacity .3s}
+.engine-card:hover{border-color:rgba(108,92,231,.3);transform:translateY(-4px);box-shadow:var(--shadow)}
+.engine-card:hover::before{opacity:1}
+.engine-icon{font-size:2.2rem;margin-bottom:1rem;display:block}
+.engine-card h3{font-size:1.15rem;margin-bottom:.4rem}
+.engine-card p{color:var(--text2);font-size:.88rem;margin-bottom:1rem}
+.engine-tags{display:flex;flex-wrap:wrap;gap:.4rem}
+.engine-tag{background:var(--bg3);padding:.2rem .6rem;border-radius:6px;font-size:.72rem;color:var(--text3);border:1px solid rgba(255,255,255,.04)}
+
+/* ─── Code Tabs ─── */
+.tabs{display:flex;gap:.4rem;margin-bottom:0;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0}
+.tab{padding:.7rem 1.2rem;font-size:.85rem;color:var(--text3);cursor:pointer;border:none;background:none;font-family:var(--font);border-bottom:2px solid transparent;transition:all .2s;border-radius:8px 8px 0 0}
+.tab:hover{color:var(--text2);background:rgba(255,255,255,.03)}
+.tab.active{color:var(--accent3);border-bottom-color:var(--accent);background:rgba(108,92,231,.08)}
+.tab-content{display:none;background:var(--bg2);border:1px solid rgba(255,255,255,.08);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:1.5rem;overflow-x:auto}
+.tab-content.active{display:block}
+.tab-content pre{font-family:var(--mono);font-size:.85rem;line-height:1.7;white-space:pre;color:var(--text)}
+
+/* ─── Architecture ─── */
+.arch-layers{display:flex;flex-direction:column;gap:0;max-width:700px;margin:0 auto}
+.arch-layer{padding:1.2rem 1.8rem;border-radius:var(--radius);text-align:center;font-size:.95rem;font-weight:500;position:relative;border:1px solid rgba(255,255,255,.08)}
+.arch-layer:nth-child(1){background:linear-gradient(135deg,rgba(108,92,231,.15),rgba(168,85,247,.1));border-color:rgba(108,92,231,.3)}
+.arch-layer:nth-child(2){background:rgba(96,165,250,.08);border-color:rgba(96,165,250,.2)}
+.arch-layer:nth-child(3){background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.2)}
+.arch-layer:nth-child(4){background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.15)}
+.arch-layer:nth-child(5){background:rgba(52,211,153,.06);border-color:rgba(52,211,153,.15)}
+.arch-arrow{text-align:center;color:var(--text3);font-size:1.2rem;padding:.3rem 0}
+
+/* ─── Quick Start ─── */
+.steps{display:flex;flex-direction:column;gap:2rem;max-width:700px}
+.step{display:flex;gap:1.2rem;align-items:flex-start}
+.step-num{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0;color:#fff}
+.step-content h4{font-size:1rem;margin-bottom:.5rem}
+.step-content pre{background:var(--bg2);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius);padding:1rem;font-family:var(--mono);font-size:.82rem;line-height:1.6;overflow-x:auto;color:var(--text)}
+.step-content pre .xml-tag{color:#c084fc}.step-content pre .xml-attr{color:#60a5fa}.step-content pre .xml-val{color:#34d399}
+
+/* ─── Stats ─── */
+.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;margin:3rem 0}
+.stat-card{text-align:center;padding:2rem 1rem;background:var(--bg2);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius-lg)}
+.stat-num{font-size:clamp(2rem,4vw,3rem);font-weight:800;background:linear-gradient(135deg,var(--accent3),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.3rem}
+.stat-label{color:var(--text2);font-size:.88rem}
+
+/* ─── Roadmap ─── */
+.roadmap{position:relative;padding-left:3rem}
+.roadmap::before{content:'';position:absolute;left:12px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--accent),var(--accent2),var(--green))}
+.roadmap-item{position:relative;padding-bottom:2.5rem}
+.roadmap-item::before{content:'';position:absolute;left:-2.35rem;top:4px;width:14px;height:14px;border-radius:50%;background:var(--accent);border:3px solid var(--bg);box-shadow:0 0 0 2px var(--accent)}
+.roadmap-item:nth-child(2)::before{background:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
+.roadmap-item:nth-child(3)::before{background:var(--cyan);box-shadow:0 0 0 2px var(--cyan)}
+.roadmap-item:nth-child(4)::before{background:var(--green);box-shadow:0 0 0 2px var(--green)}
+.roadmap-item:nth-child(5)::before{background:var(--orange);box-shadow:0 0 0 2px var(--orange)}
+.roadmap-item h4{font-size:1.05rem;margin-bottom:.3rem}
+.roadmap-item p{color:var(--text2);font-size:.88rem}
+
+/* ─── Footer ─── */
+.footer{border-top:1px solid rgba(255,255,255,.06);padding:3rem 2rem;text-align:center;color:var(--text3);font-size:.85rem}
+.footer a{color:var(--text2)}
+.footer-links{display:flex;justify-content:center;gap:2rem;margin-bottom:1rem}
+
+/* ─── Divider ─── */
+.divider{height:1px;background:linear-gradient(90deg,transparent,rgba(108,92,231,.2),transparent);max-width:1200px;margin:0 auto}
+
+/* ─── Responsive ─── */
+@media(max-width:900px){
+  .engine-grid{grid-template-columns:repeat(2,1fr)}
+  .compare-grid{grid-template-columns:1fr}
+  .stats-bar{grid-template-columns:repeat(2,1fr)}
+  .nav-links{display:none}
+  .hamburger{display:flex}
+  .nav-links.open{display:flex;flex-direction:column;position:absolute;top:64px;left:0;right:0;background:rgba(10,10,15,.95);backdrop-filter:blur(16px);padding:1.5rem 2rem;gap:1rem;border-bottom:1px solid rgba(255,255,255,.06)}
+}
+@media(max-width:600px){
+  .engine-grid{grid-template-columns:1fr}
+  .stats-bar{grid-template-columns:1fr 1fr}
+  .hero h1{font-size:2.5rem}
+  .hero-code pre{font-size:.78rem;padding:1rem}
+  .section{padding:4rem 1.2rem}
+  .tabs{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<!-- ─── Nav ─── -->
+<nav class="nav" id="nav">
+  <a href="#" class="nav-logo"><span>jpy-ml</span></a>
+  <div class="nav-links" id="navLinks">
+    <a href="#why">Why jpy-ml</a>
+    <a href="#engines">Engines</a>
+    <a href="#code">Code</a>
+    <a href="#quickstart">Quick Start</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="https://github.com/javpower/jpy-ml" target="_blank" class="nav-repo">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+    <a href="https://gitee.com/javpower/jpy-ml" target="_blank" class="nav-repo">
+      <svg viewBox="0 0 16 16"><path d="M8.002 0C3.582 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8.002-8z"/></svg>
+      Gitee
+    </a>
+  </div>
+  <div class="hamburger" id="hamburger" onclick="document.getElementById('navLinks').classList.toggle('open')">
+    <span></span><span></span><span></span>
+  </div>
+</nav>
+
+<!-- ─── Hero ─── -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-glow2"></div>
+  <div class="hero-badge"><span class="dot"></span> v1.0.0 Released</div>
+  <h1><span class="gradient">jpy-ml</span></h1>
+  <p class="subtitle">生产级 Java AI/ML 框架<br>6 行 Java 代码实现检测、分割、跟踪、分类</p>
+  <div class="hero-code">
+    <pre><div class="dots"><span></span><span></span><span></span></div><span class="code-cmt">// One dependency. One line to load. One line to infer.</span>
+<span class="code-kw">try</span> (<span class="code-type">Model</span> model = <span class="code-type">Model</span>.<span class="code-fn">preset</span>(<span class="code-str">"yolov8n"</span>)) {
+    <span class="code-type">DetectionResult</span> result = model.<span class="code-fn">predict</span>(<span class="code-str">"photo.jpg"</span>);
+    <span class="code-type">System</span>.out.<span class="code-fn">println</span>(result.<span class="code-fn">toJson</span>());
+    <span class="code-cmt">// {"task":"detect","count":6,"boxes":[...]}</span>
+}</pre>
+  </div>
+  <div class="hero-actions">
+    <a href="https://github.com/javpower/jpy-ml" target="_blank" class="btn btn-primary">GitHub</a>
+    <a href="https://gitee.com/javpower/jpy-ml" target="_blank" class="btn btn-primary" style="background:linear-gradient(135deg,#c71d23,#e63e1a)">Gitee</a>
+    <a href="https://central.sonatype.com/artifact/io.github.javpower/jpy-ml" target="_blank" class="btn btn-secondary">Maven Central</a>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Why jpy-ml ─── -->
+<section class="section" id="why">
+  <div class="section-tag">Why jpy-ml</div>
+  <div class="section-title">传统方案 vs jpy-ml</div>
+  <div class="section-desc">不是又一个 REST 包装器。jpy-ml 通过 JNI 将完整 Python ML 生态嵌入 JVM，零网络延迟，类型安全。</div>
+  <div class="compare-grid">
+    <div class="compare-card compare-old">
+      <h3><span class="icon">😤</span> 传统 Java ML</h3>
+      <ul>
+        <li><span class="li-icon">❌</span> REST 调用 Python 服务器 — 网络延迟 + 序列化开销</li>
+        <li><span class="li-icon">❌</span> 手动安装 Python + pip + PyTorch</li>
+        <li><span class="li-icon">❌</span> 解析无类型的 JSON — Map&lt;String, Object&gt; 满天飞</li>
+        <li><span class="li-icon">❌</span> 部署 2 个服务（Java 应用 + Python API）</li>
+        <li><span class="li-icon">❌</span> 只能用 ONNX Runtime（CPU only）</li>
+        <li><span class="li-icon">❌</span> 只有推理，没有训练、验证、导出</li>
+      </ul>
+    </div>
+    <div class="compare-card compare-new">
+      <h3><span class="icon">⚡</span> jpy-ml</h3>
+      <ul>
+        <li><span class="li-icon">✅</span> ML 通过 JNI 进程内运行 — 零网络延迟</li>
+        <li><span class="li-icon">✅</span> 自动下载 Python、依赖和模型权重</li>
+        <li><span class="li-icon">✅</span> 强类型结果：DetectionResult、PoseResult...</li>
+        <li><span class="li-icon">✅</span> 单 JVM 进程 — 运维简单、成本更低</li>
+        <li><span class="li-icon">✅</span> 完整 PyTorch — CPU / MPS / CUDA / 多卡</li>
+        <li><span class="li-icon">✅</span> 推理 + 训练 + 验证 + 导出 — 完整生命周期</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Engines ─── -->
+<section class="section" id="engines">
+  <div class="section-tag">What's Inside</div>
+  <div class="section-title">6 大引擎，全面覆盖</div>
+  <div class="section-desc">从经典检测到前沿 SAM 3，从手部追踪到模型训练，一个框架全部搞定。</div>
+  <div class="engine-grid">
+    <div class="engine-card">
+      <span class="engine-icon">🎯</span>
+      <h3>YOLO</h3>
+      <p>YOLOv8 / YOLO11 / YOLO26 / RT-DETR 全系列支持</p>
+      <div class="engine-tags">
+        <span class="engine-tag">Detection</span><span class="engine-tag">Segmentation</span>
+        <span class="engine-tag">Classification</span><span class="engine-tag">Pose</span><span class="engine-tag">OBB</span>
+      </div>
+    </div>
+    <div class="engine-card">
+      <span class="engine-icon">✂️</span>
+      <h3>SAM 2</h3>
+      <p>交互式分割 + 视频目标追踪，点/框 Prompt</p>
+      <div class="engine-tags">
+        <span class="engine-tag">Point Prompt</span><span class="engine-tag">Box Prompt</span>
+        <span class="engine-tag">Video Tracking</span><span class="engine-tag">Multi-Prompt</span>
+      </div>
+    </div>
+    <div class="engine-card">
+      <span class="engine-icon">🧩</span>
+      <h3>SAM 3</h3>
+      <p>自然语言分割 — "找到所有车辆" 即可分割</p>
+      <div class="engine-tags">
+        <span class="engine-tag">Text Prompt</span><span class="engine-tag">Exemplar</span>
+        <span class="engine-tag">CLIP</span><span class="engine-tag">Concept Seg</span>
+      </div>
+    </div>
+    <div class="engine-card">
+      <span class="engine-icon">🖐️</span>
+      <h3>MediaPipe</h3>
+      <p>手部追踪（21 点）、人脸网格（478 点）、姿态估计（33 点）</p>
+      <div class="engine-tags">
+        <span class="engine-tag">Hand</span><span class="engine-tag">Face Mesh</span>
+        <span class="engine-tag">Pose</span>
+      </div>
+    </div>
+    <div class="engine-card">
+      <span class="engine-icon">🖼️</span>
+      <h3>OpenCV</h3>
+      <p>图像处理基础：模糊、边缘检测、轮廓、形态学、色彩转换</p>
+      <div class="engine-tags">
+        <span class="engine-tag">Canny</span><span class="engine-tag">Contours</span>
+        <span class="engine-tag">Morphology</span><span class="engine-tag">Threshold</span>
+      </div>
+    </div>
+    <div class="engine-card">
+      <span class="engine-icon">🔄</span>
+      <h3>Full Pipeline</h3>
+      <p>训练自定义数据、验证、导出 ONNX/TensorRT/CoreML</p>
+      <div class="engine-tags">
+        <span class="engine-tag">Train</span><span class="engine-tag">Validate</span>
+        <span class="engine-tag">Export</span><span class="engine-tag">Quantize</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Code ─── -->
+<section class="section" id="code">
+  <div class="section-tag">Show Me Code</div>
+  <div class="section-title">代码即文档</div>
+  <div class="section-desc">类型安全、IDE 友好、复制即用。每个 API 都有明确的 Java 类型签名。</div>
+  <div>
+    <div class="tabs">
+      <button class="tab active" data-tab="detect">Detection</button>
+      <button class="tab" data-tab="segment">Segmentation</button>
+      <button class="tab" data-tab="pose">Pose</button>
+      <button class="tab" data-tab="sam2">SAM 2</button>
+      <button class="tab" data-tab="train">Training</button>
+    </div>
+    <div class="tab-content active" id="tab-detect"><pre><span class="code-cmt">// 目标检测 — 3 行代码搞定</span>
+<span class="code-kw">try</span> (<span class="code-type">Model</span> model = <span class="code-type">Model</span>.<span class="code-fn">preset</span>(<span class="code-str">"yolov8n"</span>)) {
+    <span class="code-type">DetectionResult</span> result = model.<span class="code-fn">predict</span>(<span class="code-str">"photo.jpg"</span>);
+
+    <span class="code-kw">for</span> (<span class="code-type">ClassPrediction</span> box : result.<span class="code-fn">getBoxes</span>()) {
+        <span class="code-type">System</span>.out.<span class="code-fn">printf</span>(<span class="code-str">"%s (%.1f%%) at %s%n"</span>,
+            box.<span class="code-fn">className</span>(), box.<span class="code-fn">confidence</span>() * <span class="code-num">100</span>, box.<span class="code-fn">box</span>());
+    }
+
+    <span class="code-cmt">// 序列化为 JSON</span>
+    <span class="code-type">String</span> json = result.<span class="code-fn">toJson</span>();
+
+    <span class="code-cmt">// Java2D 可视化（纯 Java，无 Python 依赖）</span>
+    <span class="code-type">ImageVisualizer</span> viz = <span class="code-kw">new</span> <span class="code-type">ImageVisualizer</span>().<span class="code-fn">lineWidth</span>(<span class="code-num">3</span>);
+    <span class="code-type">BufferedImage</span> annotated = viz.<span class="code-fn">visualize</span>(image, result);
+}</pre></div>
+    <div class="tab-content" id="tab-segment"><pre><span class="code-cmt">// 实例分割 — 自动检测 + 掩膜</span>
+<span class="code-kw">try</span> (<span class="code-type">Model</span> model = <span class="code-type">Model</span>.<span class="code-fn">preset</span>(<span class="code-str">"yolov8n-seg"</span>)) {
+    <span class="code-type">SegmentationResult</span> result = model.<span class="code-fn">predict</span>(<span class="code-str">"photo.jpg"</span>);
+
+    <span class="code-cmt">// 获取所有掩膜多边形</span>
+    <span class="code-kw">for</span> (<span class="code-type">Mask</span> mask : result.<span class="code-fn">getMasks</span>()) {
+        <span class="code-type">System</span>.out.<span class="code-fn">println</span>(<span class="code-str">"Mask points: "</span> + mask.<span class="code-fn">getPointCount</span>());
+    }
+
+    <span class="code-cmt">// 掩膜可视化</span>
+    <span class="code-type">ImageVisualizer</span> viz = <span class="code-kw">new</span> <span class="code-type">ImageVisualizer</span>().<span class="code-fn">maskAlpha</span>(<span class="code-num">0.5f</span>);
+    <span class="code-type">BufferedImage</span> annotated = viz.<span class="code-fn">visualize</span>(image, result);
+}</pre></div>
+    <div class="tab-content" id="tab-pose"><pre><span class="code-cmt">// 姿态估计 — COCO 17 关键点</span>
+<span class="code-kw">try</span> (<span class="code-type">Model</span> model = <span class="code-type">Model</span>.<span class="code-fn">preset</span>(<span class="code-str">"yolov8n-pose"</span>)) {
+    <span class="code-type">PoseResult</span> result = model.<span class="code-fn">predict</span>(<span class="code-str">"person.jpg"</span>);
+
+    <span class="code-type">System</span>.out.<span class="code-fn">println</span>(<span class="code-str">"Persons: "</span> + result.<span class="code-fn">personCount</span>());
+
+    <span class="code-kw">for</span> (<span class="code-type">KeypointCollection</span> kc : result.<span class="code-fn">getKeypoints</span>()) {
+        <span class="code-type">Keypoint</span> nose = kc.<span class="code-fn">getNose</span>();
+        <span class="code-type">System</span>.out.<span class="code-fn">printf</span>(<span class="code-str">"Nose: (%.1f, %.1f) conf=%.2f%n"</span>,
+            nose.<span class="code-fn">x</span>(), nose.<span class="code-fn">y</span>(), nose.<span class="code-fn">confidence</span>());
+    }
+}</pre></div>
+    <div class="tab-content" id="tab-sam2"><pre><span class="code-cmt">// SAM 2 — 点击分割 + 视频追踪</span>
+<span class="code-kw">try</span> (<span class="code-type">SAM2Model</span> sam = <span class="code-kw">new</span> <span class="code-type">SAM2Model</span>(<span class="code-str">"sam2.1_t.pt"</span>)) {
+    <span class="code-cmt">// 点 Prompt 分割</span>
+    <span class="code-type">SAM2Result</span> result = sam.<span class="code-fn">predict</span>(<span class="code-str">"photo.jpg"</span>,
+        <span class="code-type">Prompt</span>.<span class="code-fn">point</span>(<span class="code-num">320</span>, <span class="code-num">240</span>));
+    <span class="code-type">System</span>.out.<span class="code-fn">println</span>(<span class="code-str">"Best score: "</span> + result.<span class="code-fn">bestScore</span>());
+
+    <span class="code-cmt">// 视频追踪</span>
+    <span class="code-kw">try</span> (<span class="code-type">SAM2VideoTracker</span> tracker = sam.<span class="code-fn">trackVideo</span>(<span class="code-str">"video.mp4"</span>,
+            <span class="code-type">Prompt</span>.<span class="code-fn">box</span>(<span class="code-num">100</span>, <span class="code-num">100</span>, <span class="code-num">400</span>, <span class="code-num">400</span>))) {
+        <span class="code-type">SAM2VideoResult</span> video = tracker.<span class="code-fn">propagate</span>();
+        <span class="code-type">System</span>.out.<span class="code-fn">println</span>(<span class="code-str">"Tracked: "</span> + video.<span class="code-fn">trackedFrameCount</span>() + <span class="code-str">" frames"</span>);
+    }
+}</pre></div>
+    <div class="tab-content" id="tab-train"><pre><span class="code-cmt">// 训练自定义模型 — 含 Epoch 回调</span>
+<span class="code-kw">try</span> (<span class="code-type">Model</span> model = <span class="code-kw">new</span> <span class="code-type">Model</span>(<span class="code-str">"yolov8n.pt"</span>)) {
+    <span class="code-type">TrainingConfig</span> config = <span class="code-kw">new</span> <span class="code-type">TrainingConfig</span>()
+        .<span class="code-fn">dataConfig</span>(<span class="code-str">"coco128.yaml"</span>)
+        .<span class="code-fn">epochs</span>(<span class="code-num">50</span>)
+        .<span class="code-fn">imageSize</span>(<span class="code-num">640</span>)
+        .<span class="code-fn">device</span>(<span class="code-type">Device</span>.<span class="code-fn">cuda</span>(<span class="code-num">0</span>));
+
+    <span class="code-type">TrainingResult</span> result = model.<span class="code-fn">train</span>(config, (epoch, log) -> {
+        <span class="code-type">System</span>.out.<span class="code-fn">println</span>(<span class="code-str">"Epoch "</span> + epoch + <span class="code-str">": "</span> + log);
+    });
+
+    <span class="code-cmt">// 验证</span>
+    <span class="code-type">ValidationResult</span> val = model.<span class="code-fn">validate</span>(<span class="code-str">"coco128.yaml"</span>);
+    <span class="code-type">System</span>.out.<span class="code-fn">printf</span>(<span class="code-str">"mAP50=%.3f P=%.3f R=%.3f%n"</span>,
+        val.<span class="code-fn">getMAP50</span>(), val.<span class="code-fn">getPrecision</span>(), val.<span class="code-fn">getRecall</span>());
+
+    <span class="code-cmt">// 导出 ONNX</span>
+    <span class="code-type">ExportResult</span> exported = model.<span class="code-fn">export</span>(<span class="code-type">ExportFormat</span>.ONNX);
+}</pre></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Architecture ─── -->
+<section class="section">
+  <div style="text-align:center">
+    <div class="section-tag">Architecture</div>
+    <div class="section-title">架构一览</div>
+    <div class="section-desc" style="margin:0 auto 3rem">5 层架构，从 Java 类型安全 API 到底层 PyTorch 推理，层层解耦。</div>
+  </div>
+  <div class="arch-layers">
+    <div class="arch-layer"><strong>User Java Code</strong> — Model.preset("yolov8n").predict("photo.jpg")</div>
+    <div class="arch-arrow">▼</div>
+    <div class="arch-layer"><strong>Type-Safe API Layer</strong> — 58 Java source files, DetectionResult, PoseResult, SAM2Result...</div>
+    <div class="arch-arrow">▼</div>
+    <div class="arch-layer"><strong>PythonEngine</strong> — Singleton, ReadWriteLock, Thread-Safe</div>
+    <div class="arch-arrow">▼</div>
+    <div class="arch-layer"><strong>Jep 4.3.1</strong> — JNI Bridge, DirectNDArray Zero-Copy</div>
+    <div class="arch-arrow">▼</div>
+    <div class="arch-layer"><strong>Python Runtime</strong> — CPython 3.13 + Ultralytics 8.4 + PyTorch 2.11</div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Quick Start ─── -->
+<section class="section" id="quickstart">
+  <div class="section-tag">Quick Start</div>
+  <div class="section-title">3 分钟上手</div>
+  <div class="section-desc">添加依赖 → 写代码 → 运行。就这样。</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h4>添加 Maven 依赖</h4>
+<pre><span class="xml-tag">&lt;dependency&gt;</span>
+    <span class="xml-tag">&lt;groupId&gt;</span>io.github.javpower<span class="xml-tag">&lt;/groupId&gt;</span>
+    <span class="xml-tag">&lt;artifactId&gt;</span>jpy-ml<span class="xml-tag">&lt;/artifactId&gt;</span>
+    <span class="xml-tag">&lt;version&gt;</span><span class="xml-val">1.0.0</span><span class="xml-tag">&lt;/version&gt;</span>
+<span class="xml-tag">&lt;/dependency&gt;</span></pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h4>初始化 &amp; 推理</h4>
+<pre><span class="code-cmt">// 初始化 Python 运行时（自动下载 Python + 依赖）</span>
+<span class="code-type">PythonRuntime</span>.<span class="code-fn">init</span>();
+
+<span class="code-cmt">// 加载模型并推理（自动下载模型权重）</span>
+<span class="code-kw">try</span> (<span class="code-type">Model</span> model = <span class="code-type">Model</span>.<span class="code-fn">preset</span>(<span class="code-str">"yolov8n"</span>)) {
+    <span class="code-type">DetectionResult</span> result = model.<span class="code-fn">predict</span>(<span class="code-str">"photo.jpg"</span>);
+    result.<span class="code-fn">getBoxes</span>().<span class="code-fn">forEach</span>(<span class="code-type">System</span>.out::<span class="code-fn">println</span>);
+}</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h4>运行</h4>
+<pre>mvn clean compile exec:java
+
+<span class="code-cmt"># 或使用本地 venv（开发模式）</span>
+PythonRuntime.<span class="code-fn">init</span>(pythonPath, jepLibraryPath);</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Stats ─── -->
+<section class="section">
+  <div class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-num" data-target="58">0</div>
+      <div class="stat-label">Java Source Files</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" data-target="106">0</div>
+      <div class="stat-label">Tests (All Passing)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" data-target="5">0</div>
+      <div class="stat-label">Task Types</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" data-target="6">0</div>
+      <div class="stat-label">ML Engines</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Roadmap ─── -->
+<section class="section" id="roadmap">
+  <div class="section-tag">Roadmap</div>
+  <div class="section-title">接下来做什么</div>
+  <div class="section-desc">jpy-ml 不止于视觉。未来将支持 NLP、语音、图像生成和 LLM 推理。</div>
+  <div class="roadmap">
+    <div class="roadmap-item">
+      <h4>Transformers / HuggingFace</h4>
+      <p>NLP、文本生成、翻译、文本嵌入 — 直接在 Java 中调用 HuggingFace 模型</p>
+    </div>
+    <div class="roadmap-item">
+      <h4>Whisper — 语音转文字</h4>
+      <p>Whisper 模型推理，支持多语言语音识别和翻译</p>
+    </div>
+    <div class="roadmap-item">
+      <h4>Stable Diffusion / FLUX</h4>
+      <p>AI 图像生成 — 文字描述生成图片，风格迁移</p>
+    </div>
+    <div class="roadmap-item">
+      <h4>DeepSeek / LLM 推理</h4>
+      <p>大语言模型推理 — 对话、代码生成、知识问答</p>
+    </div>
+    <div class="roadmap-item">
+      <h4>Spring Boot Starter</h4>
+      <p>一行依赖开启 AI 能力，自动配置 Python 运行时和模型</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Footer ─── -->
+<footer class="footer">
+  <div class="footer-links">
+    <a href="https://github.com/javpower/jpy-ml" target="_blank">GitHub</a>
+    <a href="https://gitee.com/javpower/jpy-ml" target="_blank">Gitee</a>
+    <a href="https://github.com/javpower/jpy-ml/blob/main/LICENSE" target="_blank">Apache 2.0 License</a>
+    <a href="https://central.sonatype.com/artifact/io.github.javpower/jpy-ml" target="_blank">Maven Central</a>
+    <a href="https://github.com/javpower/jpy-ml/issues" target="_blank">Issues</a>
+  </div>
+  <p>Made with ❤️ by <a href="https://github.com/javpower" target="_blank">gc.x</a> &nbsp;·&nbsp; jpy-ml is licensed under Apache 2.0</p>
+  <p style="margin-top:.5rem;font-size:.78rem;color:var(--text3)">Powered by Jep + Ultralytics + PyTorch</p>
+</footer>
+
+<script>
+// Nav scroll effect
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 40);
+});
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Counter animation
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const el = entry.target;
+      const target = parseInt(el.dataset.target);
+      let current = 0;
+      const step = Math.max(1, Math.floor(target / 40));
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(timer); }
+        el.textContent = current;
+      }, 30);
+      observer.unobserve(el);
+    }
+  });
+}, { threshold: 0.5 });
+document.querySelectorAll('.stat-num').forEach(el => observer.observe(el));
+
+// Close mobile menu on link click
+document.querySelectorAll('.nav-links a').forEach(a => {
+  a.addEventListener('click', () => document.getElementById('navLinks').classList.remove('open'));
+});
+</script>
+</body>
+</html>
