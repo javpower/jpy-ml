@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  * The raw buffer access avoids object allocation and is suitable for high-throughput
  * scenarios where you need to process detection results without creating Java objects.
  */
-public class RawDetectionResult implements RawInferenceResult {
+public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
 
     private final String sourcePath;
     private final int origWidth, origHeight;
@@ -230,12 +230,24 @@ public class RawDetectionResult implements RawInferenceResult {
 
     /**
      * Release buffers back to the pool. Call this when done with the result
-     * to allow buffer reuse.
+     * to allow buffer reuse. Also called automatically by {@link #close()}.
      */
     @Override
     public void release() {
         bufferPool.release(boxesXYXY);
         bufferPool.release(confidences);
         bufferPool.release(classIds);
+    }
+
+    /**
+     * AutoCloseable support — releases buffers back to pool.
+     * Allows use with try-with-resources:
+     * <pre>
+     *   try (RawDetectionResult raw = model.predictRaw(path)) { ... }
+     * </pre>
+     */
+    @Override
+    public void close() {
+        release();
     }
 }

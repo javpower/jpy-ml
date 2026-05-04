@@ -2,7 +2,7 @@ package io.github.javpower.jpyml;
 
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonRuntime;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
@@ -116,5 +116,13 @@ public class QuickVerifyTest {
         StringBuilder output = new StringBuilder();
         engine.exec("print('hello from python')", line -> output.append(line), null);
         assertTrue(output.toString().contains("hello from python"));
+    }
+
+    @AfterAll
+    static void cleanup() {
+        if (engine != null) {
+            engine.close();
+            engine = null;
+        }
     }
 }

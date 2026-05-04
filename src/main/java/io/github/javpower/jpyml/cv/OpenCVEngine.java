@@ -23,14 +23,27 @@ import java.util.Map;
  *   cv.canny("input.jpg", "edges.jpg", 100, 200);
  * </pre>
  */
-public class OpenCVEngine {
+public class OpenCVEngine implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(OpenCVEngine.class);
     private final PythonEngine engine;
     private boolean scriptsLoaded = false;
+    private boolean closed = false;
 
     public OpenCVEngine() throws JepException {
         this.engine = PythonEngine.getInstance();
+    }
+
+    private void ensureOpen() {
+        if (closed) throw new IllegalStateException("OpenCVEngine is closed");
+    }
+
+    @Override
+    public void close() {
+        if (!closed) {
+            closed = true;
+            log.info("Closing OpenCVEngine");
+        }
     }
 
     private void ensureScripts() throws JepException {
@@ -48,6 +61,7 @@ public class OpenCVEngine {
      * @return ImageInfo with width, height, channels
      */
     public ImageInfo imread(String imagePath) throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_path", imagePath);
@@ -73,6 +87,7 @@ public class OpenCVEngine {
      * @return output path
      */
     public String imwrite(String sourcePath, String outputPath) throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);
@@ -93,6 +108,7 @@ public class OpenCVEngine {
      * @return output path
      */
     public String cvtColor(String sourcePath, String outputPath, String conversion) throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);
@@ -115,6 +131,7 @@ public class OpenCVEngine {
      * @return output path
      */
     public String resize(String sourcePath, String outputPath, int width, int height) throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);
@@ -137,6 +154,7 @@ public class OpenCVEngine {
      * @return output path
      */
     public String blur(String sourcePath, String outputPath, int kernelSize) throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);
@@ -160,6 +178,7 @@ public class OpenCVEngine {
      */
     public String canny(String sourcePath, String outputPath, double threshold1, double threshold2)
             throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);
@@ -181,6 +200,7 @@ public class OpenCVEngine {
      * @return contour result with contour data
      */
     public ContourResult findContours(String sourcePath, String outputPath) throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);
@@ -225,6 +245,7 @@ public class OpenCVEngine {
      */
     public String threshold(String sourcePath, String outputPath, double thresh, double maxval, String threshType)
             throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);
@@ -265,6 +286,7 @@ public class OpenCVEngine {
      */
     public String morphology(String sourcePath, String outputPath, String operation, int kernelSize, int iterations)
             throws InferenceException {
+        ensureOpen();
         try {
             ensureScripts();
             engine.put("_jpy_cv_src", sourcePath);

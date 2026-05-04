@@ -31,7 +31,10 @@ class MediaPipeEngineTest {
 
     @AfterAll
     static void cleanup() {
-        // testImage is a local file, no cleanup needed
+        if (engine != null) {
+            engine.close();
+            engine = null;
+        }
     }
 
     @Test

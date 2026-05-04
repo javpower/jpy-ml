@@ -319,25 +319,29 @@ public class Model implements AutoCloseable {
      */
     public CompletableFuture<Void> predictVideoAsync(String videoPath, Consumer<InferenceResult> frameConsumer) {
         ensureOpen();
-        new Thread(() -> {
+        Thread t = new Thread(() -> {
             try {
                 predictVideo(videoPath, frameConsumer);
             } catch (Exception e) {
-                // logged by predictVideo
+                log.warn("Video async prediction failed", e);
             }
-        }, "jpy-ml-video").start();
+        }, "jpy-ml-video");
+        t.setDaemon(true);
+        t.start();
         return CompletableFuture.completedFuture(null);
     }
 
     public CompletableFuture<Void> predictVideoAsync(String videoPath, ModelConfig config, Consumer<InferenceResult> frameConsumer) {
         ensureOpen();
-        new Thread(() -> {
+        Thread t = new Thread(() -> {
             try {
                 predictVideo(videoPath, config, frameConsumer);
             } catch (Exception e) {
-                // logged by predictVideo
+                log.warn("Video async prediction failed", e);
             }
-        }, "jpy-ml-video").start();
+        }, "jpy-ml-video");
+        t.setDaemon(true);
+        t.start();
         return CompletableFuture.completedFuture(null);
     }
 
@@ -992,6 +996,11 @@ public class Model implements AutoCloseable {
         if (!closed) {
             closed = true;
             log.info("Closing model: {}", modelPath);
+            try {
+                // Clean up the model reference from Python _jpy_models dict
+                engine.exec("_jpy_cleanup('_jpy_m" + id + "')");
+            } catch (Exception ignored) {
+            }
             try {
                 engine.exec("_jpy_mv" + id + " = None");
                 engine.exec("_jpy_pr" + id + " = None");

@@ -1,16 +1,52 @@
 # jpy-ml
 
-[English](README.md)
+<p align="center">
+  <strong>生产级 Java AI/ML 框架 — 6 行 Java 代码实现检测、分割、跟踪、分类</strong>
+</p>
 
-**jpy-ml** 是一个生产级 Java 框架，将 Python ML 生态无缝桥接到 Java。
-通过 JNI 嵌入完整的 Python 运行时，提供零配置环境管理，并将强大的 ML 库封装为
-简洁、类型安全的 Java API。
+<p align="center">
+  <a href="README.md">English</a> &middot;
+  <a href="#快速开始">快速开始</a> &middot;
+  <a href="#api-用法">API 文档</a> &middot;
+  <a href="#路线图">路线图</a>
+</p>
 
-愿景：**将整个 Python AI/ML 生态带给 Java 开发者 —— 无需任何 Python 知识。**
+---
 
-当前已实现 **Ultralytics YOLO**（v8/v11/v26、RT-DETR、SAM）的一等支持，
-覆盖目标检测、实例分割、图像分类、姿态估计、旋转框检测 ——
-推理、训练、验证、导出、ONNX Runtime 全部打通。
+**一个依赖。一行加载。一行推理。** jpy-ml 将完整的 Python ML 生态直接嵌入 JVM —
+YOLO、SAM、MediaPipe、OpenCV — 全部封装为简洁、类型安全的 Java API，零 Python 配置。
+
+```java
+// 就这么简单。自动下载模型，运行推理，返回类型化结果。
+try (Model model = Model.preset("yolov8n")) {
+    DetectionResult result = model.predict("photo.jpg");
+    System.out.println(result.toJson());   // {"task":"detect","count":6,"boxes":[...]}
+}
+```
+
+无需安装 Python。无需手动下载模型。无需配置文件。无需 `Map<String, Object>` 强转。
+**Java 里直接跑生产级 ML。**
+
+### 和传统方案的区别
+
+| 传统 Java ML 方案 | jpy-ml |
+|---|---|
+| 通过 REST 调用 Python 服务 | ML **进程内运行**（JNI）— 零网络延迟 |
+| 手动安装 Python + pip + torch | **自动下载** Python、所有依赖、模型权重 |
+| 解析无类型的 JSON 结果 | **强类型**结果：`DetectionResult`、`PoseResult`... |
+| 部署两个服务（Java + Python API） | **单 JVM 进程** — 运维更简单，成本更低 |
+| 只能用 ONNX Runtime（仅 CPU） | **完整 PyTorch** — CPU、Apple MPS、NVIDIA CUDA、多卡 |
+| 只能推理 | **推理 + 训练 + 验证 + 导出** — 全生命周期 |
+
+### 内置引擎
+
+- **YOLO** — YOLOv8 / YOLO11 / YOLO26 / RT-DETR：检测、分割、分类、姿态、旋转框
+- **SAM 2** — 交互式分割（点/框提示）+ 视频目标跟踪
+- **SAM 3** — 自然语言概念级分割（"找到所有车辆"）
+- **MediaPipe** — 手部追踪（21 关键点）、面部网格（478 关键点）、姿态估计（33 关键点）
+- **OpenCV** — 图像处理：模糊、边缘检测、轮廓、形态学、色彩转换
+- **ONNX Runtime** — CPU/GPU 推理（导出模型）
+- **完整流水线** — 自定义数据训练、验证、导出为 ONNX/TensorRT/CoreML
 
 ---
 
@@ -37,6 +73,11 @@
 - **图像标注** — 通过 PIL 绘制推理结果，支持所有任务类型
 - **零拷贝桥接** — `TensorBufferPool` + `RawDetectionResult` 高性能推理
 - **GPU 内存管理** — `warmup()`、`unload()`、`reload(device)` API
+- **直接图像输入** — `predict(byte[])`、`predict(BufferedImage)`，无需临时文件
+- **异步 API** — `predictAsync()` 返回 `CompletableFuture<InferenceResult>`
+- **结果序列化** — `toJson()`、`toMap()`，所有结果类型，无外部依赖
+- **模型中心** — `Model.preset("yolov8n")` 自动下载并缓存模型
+- **Java 可视化** — `ImageVisualizer` 纯 Java2D 绘制框/mask/关键点
 
 ### SAM 2 — 交互式分割
 - **点/框提示** — 通过点击或绘制边界框分割对象
@@ -366,7 +407,7 @@ try (Model model = new Model("yolov8n.pt")) {
 │  DetectionResult r = m.predict(img);     │
 ├──────────────────────────────────────────┤
 │  Model / ModelConfig / Result 类型       │
-│  (55 个 Java 源文件)                     │
+│  (58 个 Java 源文件)                     │
 ├──────────────────────────────────────────┤
 │  PythonEngine (单例, ReadWriteLock)      │
 │  SharedInterpreter + sys.path 过滤       │
@@ -389,7 +430,7 @@ try (Model model = new Model("yolov8n.pt")) {
 
 ## 测试覆盖
 
-全部 89 个测试通过（0 跳过）：
+全部 106 个测试通过（0 跳过）：
 
 | 测试套件 | 数量 | 说明 |
 |---------|------|------|
@@ -398,6 +439,7 @@ try (Model model = new Model("yolov8n.pt")) {
 | PythonRuntimeTest | 3 | 平台检测 |
 | ModelIntegrationTest | 18 | 完整 YOLO 集成（推理 + 批量 + 视频 + 训练 + 导出） |
 | SAMIntegrationTest | 9 | SAM 2/3 集成（点/框/视频/文本/样本） |
+| NewFeaturesTest | 17 | 序列化、byte[]输入、异步、模型中心、可视化 |
 | TensorBufferPoolTest | 6 | 零拷贝缓冲池 |
 | BoundingBoxTest | 10 | BoundingBox 记录类 |
 | KeypointTest | 5 | Keypoint 记录类 |
@@ -468,6 +510,11 @@ jpy-ml 的定位是通用 Java-Python ML 桥接框架。YOLO 是第一个引擎 
 - [x] SLF4J 日志框架
 - [x] 异常层次（`JpyMlException` 基类）
 - [x] CI/CD（GitHub Actions）
+- [x] 结果序列化（toJson / toMap）
+- [x] 直接图像输入（byte[] / BufferedImage）
+- [x] 模型中心自动下载（Model.preset）
+- [x] Java2D 结果可视化（ImageVisualizer）
+- [x] 异步推理 API（predictAsync）
 
 ### 近期
 - [ ] Windows / Linux CI 测试

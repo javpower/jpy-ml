@@ -195,6 +195,20 @@ public class PythonRuntime {
     }
 
     /**
+     * Shutdown the runtime: close the PythonEngine singleton and reset state.
+     * Call this when your application is exiting to ensure clean shutdown.
+     */
+    public static synchronized void shutdown() {
+        if (!initialized.get()) return;
+        try {
+            PythonEngine.shutdown();
+        } catch (Exception ignored) {
+        }
+        initialized.set(false);
+        log.info("PythonRuntime shut down");
+    }
+
+    /**
      * Check if the runtime is ready (Python + jep + all required packages installed).
      */
     public static boolean isReady() {

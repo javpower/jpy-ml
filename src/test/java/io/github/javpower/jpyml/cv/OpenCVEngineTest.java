@@ -37,6 +37,10 @@ class OpenCVEngineTest {
 
     @AfterAll
     static void cleanup() throws Exception {
+        if (engine != null) {
+            engine.close();
+            engine = null;
+        }
         if (testImage != null) Files.deleteIfExists(testImage);
         if (outputDir != null) {
             try (var stream = Files.walk(outputDir)) {

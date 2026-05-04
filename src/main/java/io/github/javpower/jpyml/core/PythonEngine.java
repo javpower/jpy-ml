@@ -56,6 +56,16 @@ public class PythonEngine implements Closeable {
     }
 
     /**
+     * Shutdown the singleton engine. Called by PythonRuntime.shutdown().
+     */
+    public static synchronized void shutdown() {
+        if (instance != null && !instance.closed) {
+            instance.close();
+        }
+        instance = null;
+    }
+
+    /**
      * Create a new engine (closes the previous one if any).
      * Use this if you need a fresh Python namespace.
      */
@@ -337,6 +347,8 @@ public class PythonEngine implements Closeable {
                 interpreter.close();
             } catch (Exception ignored) {
             }
+            // Note: do NOT reset sharedInterpCreated here.
+            // SharedInterpreter.setConfig() can only be called once per JVM.
         }
     }
 }

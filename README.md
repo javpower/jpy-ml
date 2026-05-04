@@ -1,14 +1,53 @@
 # jpy-ml
 
-**jpy-ml** is a production-grade Java framework that seamlessly bridges the Python ML ecosystem into Java.
-It embeds a full Python runtime via JNI, providing zero-config environment management and wrapping
-powerful ML libraries behind clean, type-safe Java APIs.
+<p align="center">
+  <strong>The definitive Java framework for production AI/ML — 6 lines of Java to detect, segment, track, and classify anything.</strong>
+</p>
 
-The vision: **bring the entire Python AI/ML world to Java developers — no Python knowledge required.**
+<p align="center">
+  <a href="README_zh.md">中文文档</a> &middot;
+  <a href="#quick-start">Quick Start</a> &middot;
+  <a href="#api-usage">API Docs</a> &middot;
+  <a href="#roadmap">Roadmap</a>
+</p>
 
-Currently implements first-class support for **Ultralytics YOLO** (v8/v11/v26, RT-DETR, SAM) covering
-object detection, segmentation, classification, pose estimation, oriented bounding boxes — with
-inference, training, validation, export, and ONNX Runtime all fully wired.
+---
+
+**One dependency. One line to load. One line to infer.** jpy-ml embeds the full Python ML ecosystem
+directly into the JVM — YOLO, SAM, MediaPipe, OpenCV — all behind clean, type-safe Java APIs
+with zero Python setup required.
+
+```java
+// That's it. Auto-downloads model, runs inference, returns typed results.
+try (Model model = Model.preset("yolov8n")) {
+    DetectionResult result = model.predict("photo.jpg");
+    System.out.println(result.toJson());   // {"task":"detect","count":6,"boxes":[...]}
+}
+```
+
+No Python installation. No model downloads. No config files. No `Map<String, Object>` casting.
+Just **production-ready ML in Java**.
+
+### What makes it different?
+
+| Traditional Java ML | jpy-ml |
+|---|---|
+| Wrap REST calls to a Python server | ML runs **in-process** via JNI — zero network latency |
+| Manually install Python + pip + torch | **Auto-downloads** Python, all deps, and model weights |
+| Parse untyped JSON from model APIs | **Strongly typed** results: `DetectionResult`, `PoseResult`, ... |
+| Deploy 2 services (Java app + Python API) | **Single JVM process** — simpler ops, lower cost |
+| Limited to ONNX Runtime (CPU only) | **Full PyTorch** — CPU, Apple MPS, NVIDIA CUDA, Multi-GPU |
+| Only inference | **Inference + Training + Validation + Export** — full lifecycle |
+
+### What's included
+
+- **YOLO** — YOLOv8 / YOLO11 / YOLO26 / RT-DETR: detect, segment, classify, pose, OBB
+- **SAM 2** — interactive segmentation with point/box prompts + video object tracking
+- **SAM 3** — concept-level segmentation via natural language ("find all cars")
+- **MediaPipe** — hand tracking (21 pts), face mesh (478 pts), pose estimation (33 pts)
+- **OpenCV** — image processing: blur, edges, contours, morphology, color conversion
+- **ONNX Runtime** — CPU/GPU inference from exported models
+- **Full Pipeline** — train on custom data, validate, export to ONNX/TensorRT/CoreML
 
 ---
 
@@ -269,7 +308,8 @@ jpy-ml/
 │   │   │   ├── ValidationResult.java   # mAP50, mAP50-95, precision, recall, per-class
 │   │   │   └── PerClassMetric.java     # Per-class mAP record
 │   │   └── annotation/                 # Image annotation
-│   │       └── ImageAnnotator.java     # Draw results on images
+│   │       ├── ImageAnnotator.java     # Draw results via Python PIL
+│   │       └── ImageVisualizer.java   # Java2D result visualization
 │   ├── cv/                             # OpenCV integration
 │   │   └── OpenCVEngine.java           # OpenCV operations
 │   ├── mp/                             # MediaPipe integration
@@ -287,6 +327,7 @@ jpy-ml/
     ├── PythonRuntimeTest.java           # Platform detection (3 cases)
     ├── ModelIntegrationTest.java        # Full YOLO integration (18 cases)
     ├── SAMIntegrationTest.java          # SAM 2/3 integration (9 cases)
+    ├── NewFeaturesTest.java             # Serialization, byte[], async, hub, viz (17 cases)
     ├── OpenCVEngineTest.java            # OpenCV operations (8 cases)
     ├── MediaPipeEngineTest.java         # Hand/face/pose detection (4 cases)
     ├── StreamRealtimeTest.java          # Real-time stream tests
@@ -974,6 +1015,11 @@ jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engin
 - [x] SLF4J logging framework
 - [x] Exception hierarchy (`JpyMlException` base)
 - [x] CI/CD (GitHub Actions)
+- [x] Result serialization (toJson / toMap)
+- [x] Direct image input (byte[] / BufferedImage)
+- [x] Model Hub auto-download (Model.preset)
+- [x] Java2D result visualization (ImageVisualizer)
+- [x] Async prediction API (predictAsync)
 
 ### Next
 - [ ] Windows / Linux CI testing
