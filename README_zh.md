@@ -4,6 +4,8 @@
   <strong>生产级 Java AI/ML 框架 — 6 行 Java 代码实现检测、分割、跟踪、分类</strong>
 </p>
 
+![index.png](docs%2Findex.png)
+
 <p align="center">
   <a href="README.md">English</a> &middot;
   <a href="#快速开始">快速开始</a> &middot;
@@ -26,6 +28,7 @@ try (Model model = Model.preset("yolov8n")) {
 
 无需安装 Python。无需手动下载模型。无需配置文件。无需 `Map<String, Object>` 强转。
 **Java 里直接跑生产级 ML。**
+
 
 ### 和传统方案的区别
 

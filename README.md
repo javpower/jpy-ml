@@ -4,6 +4,8 @@
   <strong>The definitive Java framework for production AI/ML — 6 lines of Java to detect, segment, track, and classify anything.</strong>
 </p>
 
+![index.png](docs%2Findex.png)
+
 <p align="center">
   <a href="README_zh.md">中文文档</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
