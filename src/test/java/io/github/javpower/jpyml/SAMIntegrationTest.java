@@ -8,7 +8,11 @@ import io.github.javpower.jpyml.ml.model.SAM3Model;
 import io.github.javpower.jpyml.ml.result.*;
 import org.junit.jupiter.api.*;
 
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
 import java.nio.file.Path;
+import javax.imageio.ImageIO;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -131,7 +135,39 @@ class SAMIntegrationTest {
             Mask bestMask = result.bestMask();
             assertNotNull(bestMask);
 
-            System.out.println("SAM3 text prompt: " + result.count() + " masks");
+            // Draw and save annotated image for visual inspection
+            BufferedImage img = ImageIO.read(new File(TEST_IMAGE));
+            Graphics2D g = img.createGraphics();
+            g.setStroke(new BasicStroke(3));
+            Color[] colors = {Color.RED, Color.GREEN, Color.BLUE, Color.ORANGE, Color.MAGENTA, Color.CYAN};
+            for (int i = 0; i < result.count(); i++) {
+                Color color = colors[i % colors.length];
+                Mask mask = result.masks().get(i);
+                float[][] polygon = mask.getPolygon();
+                int[] xPoints = new int[polygon.length];
+                int[] yPoints = new int[polygon.length];
+                for (int j = 0; j < polygon.length; j++) {
+                    xPoints[j] = Math.round(polygon[j][0]);
+                    yPoints[j] = Math.round(polygon[j][1]);
+                }
+                // Fill mask with semi-transparent color
+                g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 80));
+                g.fillPolygon(xPoints, yPoints, polygon.length);
+                // Draw mask outline
+                g.setColor(color);
+                g.drawPolygon(xPoints, yPoints, polygon.length);
+                // Draw score label
+                float score = i < result.scores().size() ? result.scores().get(i) : 0;
+                int labelX = xPoints.length > 0 ? xPoints[0] : 10;
+                int labelY = yPoints.length > 0 ? yPoints[0] : 20;
+                g.setFont(new Font("SansSerif", Font.BOLD, 14));
+                g.drawString(String.format("%.2f", score), labelX, labelY);
+            }
+            g.dispose();
+
+            Path outputPath = PROJECT_ROOT.resolve("sam3_text_result.jpg");
+            ImageIO.write(img, "jpg", outputPath.toFile());
+            System.out.println("SAM3 text prompt: " + result.count() + " masks, saved to " + outputPath);
         }
     }
 
