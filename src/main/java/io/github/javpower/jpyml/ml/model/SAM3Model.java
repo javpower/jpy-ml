@@ -179,6 +179,10 @@ public class SAM3Model implements AutoCloseable {
         if (!closed) {
             closed = true;
             try {
+                engine.exec("if '" + varName + "' in _jpy_sam3_predictors: del _jpy_sam3_predictors['" + varName + "']");
+            } catch (Exception ignored) {
+            }
+            try {
                 engine.exec(varName + " = None");
             } catch (Exception ignored) {
             }

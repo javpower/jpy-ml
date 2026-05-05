@@ -125,11 +125,12 @@ public class PythonEngine implements Closeable {
         String sitePackages = PythonRuntime.getJepIncludePath();
         if (sitePackages != null && !sitePackages.isEmpty()) {
             interp.exec("import sys");
-            // Only remove Homebrew/system site-packages (not stdlib paths)
+            interp.set("_jpy_site_pkg", sitePackages);
             interp.exec(
-                "sys.path = [p for p in sys.path if 'site-packages' not in p or p == '" + sitePackages + "']"
+                "sys.path = [p for p in sys.path if 'site-packages' not in p or p == _jpy_site_pkg]"
             );
-            interp.exec("if '" + sitePackages + "' not in sys.path: sys.path.insert(0, '" + sitePackages + "')");
+            interp.exec("if _jpy_site_pkg not in sys.path: sys.path.insert(0, _jpy_site_pkg)");
+            interp.exec("del _jpy_site_pkg");
         }
 
         return new PythonEngine(interp);
@@ -306,7 +307,8 @@ public class PythonEngine implements Closeable {
      */
     public boolean hasModule(String module) {
         try {
-            exec("__import__('" + module + "')");
+            put("_jpy_check_mod", module);
+            exec("__import__(_jpy_check_mod)");
             return true;
         } catch (Exception e) {
             return false;

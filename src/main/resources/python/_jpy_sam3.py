@@ -87,7 +87,9 @@ def jpy_sam3_predict_text(var_name, image_path, text_prompts):
 def jpy_sam3_predict_exemplar(var_name, image_path, exemplar_path, exemplar_box):
     """Run SAM 3 prediction with an image exemplar.
 
-    Uses SAM to segment the exemplar region, then uses the mask as a prompt.
+    Uses the stored SAM3SemanticPredictor to segment both the exemplar
+    and target images, scaling the exemplar bounding box proportionally
+    to the target image dimensions.
 
     Args:
         var_name: Variable name of the loaded model
@@ -96,44 +98,70 @@ def jpy_sam3_predict_exemplar(var_name, image_path, exemplar_path, exemplar_box)
         exemplar_box: Bounding box in exemplar image [x1, y1, x2, y2]
 
     Returns:
-        dict with masks and scores
+        dict with masks, exemplar_masks, and path
     """
+    import cv2
     import numpy as np
 
     entry = _jpy_sam3_predictors[var_name]
-    model_path = entry['model_path']
+    predictor = entry['predictor']
 
-    # Use SAM (not SemanticPredictor) for bbox-based segmentation
-    from ultralytics import SAM as SAMModel
-    model = SAMModel(model_path)
+    # 1. Read and segment the exemplar image
+    exemplar_image = cv2.imread(exemplar_path)
+    if exemplar_image is None:
+        raise RuntimeError(f"Failed to read exemplar image: {exemplar_path}")
 
-    # First, segment the exemplar to get a reference mask
-    exemplar_results = model(exemplar_path, bboxes=[list(exemplar_box)])
+    predictor.set_image(exemplar_image)
+    exemplar_results = predictor(bboxes=[list(exemplar_box)])
 
-    if not exemplar_results or exemplar_results[0].masks is None:
-        return {'masks': [], 'path': image_path}
+    exemplar_masks_data = []
+    if exemplar_results and exemplar_results[0].masks is not None:
+        for i in range(len(exemplar_results[0].masks)):
+            polygon = exemplar_results[0].masks.xy[i].tolist() if hasattr(exemplar_results[0].masks, 'xy') else []
+            score = float(exemplar_results[0].boxes.conf[i].cpu()) if exemplar_results[0].boxes is not None and i < len(exemplar_results[0].boxes) else 1.0
+            exemplar_masks_data.append({'polygon': polygon, 'score': score})
 
-    # Use the exemplar mask as a prompt for the target image
-    exemplar_mask = exemplar_results[0].masks.xy[0].tolist()
+    # 2. Read the target image and scale the exemplar bbox proportionally
+    target_image = cv2.imread(image_path)
+    if target_image is None:
+        raise RuntimeError(f"Failed to read target image: {image_path}")
 
-    results = model(image_path, bboxes=[list(exemplar_box)])
+    eh, ew = exemplar_image.shape[:2]
+    h, w = target_image.shape[:2]
+    ex1, ey1, ex2, ey2 = exemplar_box
 
-    if not results:
-        return {'masks': [], 'path': image_path}
+    scale_x = w / ew
+    scale_y = h / eh
+    target_box = [
+        max(0, ex1 * scale_x),
+        max(0, ey1 * scale_y),
+        min(w, ex2 * scale_x),
+        min(h, ey2 * scale_y),
+    ]
 
-    result = results[0]
+    # 3. Segment the target image with the scaled bbox
+    predictor.set_image(target_image)
+    target_results = predictor(bboxes=[target_box])
+
+    if not target_results:
+        return {'masks': [], 'exemplar_masks': exemplar_masks_data, 'path': image_path}
+
+    result = target_results[0]
     masks_data = []
 
     if result.masks is not None:
         for i in range(len(result.masks)):
             polygon = result.masks.xy[i].tolist() if hasattr(result.masks, 'xy') else []
-            score = float(result.boxes.conf[i].cpu()) if result.boxes is not None else 1.0
+            score = float(result.boxes.conf[i].cpu()) if result.boxes is not None and i < len(result.boxes) else 1.0
+            class_id = int(result.boxes.cls[i].cpu()) if result.boxes is not None and i < len(result.boxes) else 0
             masks_data.append({
                 'polygon': polygon,
                 'score': score,
+                'class_id': class_id,
             })
 
     return {
         'masks': masks_data,
+        'exemplar_masks': exemplar_masks_data,
         'path': image_path,
     }

@@ -17,6 +17,7 @@ import io.github.javpower.jpyml.ml.training.TrainingConfig;
 import io.github.javpower.jpyml.ml.training.TrainingResult;
 import io.github.javpower.jpyml.ml.validation.PerClassMetric;
 import io.github.javpower.jpyml.ml.validation.ValidationResult;
+import io.github.javpower.jpyml.util.PythonEscape;
 import jep.JepException;
 
 import java.awt.image.BufferedImage;
@@ -27,6 +28,9 @@ import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
@@ -49,6 +53,11 @@ public class Model implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Model.class);
     private static final AtomicLong idCounter = new AtomicLong(0);
+    private static final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "jpy-ml-async");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final long id;
     private final String varName;
@@ -78,8 +87,12 @@ public class Model implements AutoCloseable {
 
             // Load model in Python
             engine.put(varName + "_path", modelPath);
-            String taskArg = overrideTask != null ? ", task='" + escapePythonString(overrideTask.getKey()) + "'" : "";
-            engine.exec(varName + "_info = jpy_load_model(" + varName + "_path" + taskArg + ")");
+            if (overrideTask != null) {
+                engine.put(varName + "_task_arg", overrideTask.getKey());
+                engine.exec(varName + "_info = jpy_load_model(" + varName + "_path, task=" + varName + "_task_arg)");
+            } else {
+                engine.exec(varName + "_info = jpy_load_model(" + varName + "_path)");
+            }
             @SuppressWarnings("unchecked")
             Map<String, Object> info = engine.eval(varName + "_info");
 
@@ -214,22 +227,9 @@ public class Model implements AutoCloseable {
         engine.put(rv + "_src_bytes", imageData);
         engine.exec(rv + "_src = jpy_decode_image(" + rv + "_src_bytes)");
 
-        // Build the predict call (same as predictClean but source is already a numpy array)
-        StringBuilder call = new StringBuilder();
-        call.append(rv).append("_raw = ").append(mv).append("(").append(rv).append("_src");
-        for (Map.Entry<String, Object> e : kwargs.entrySet()) {
-            call.append(", ").append(escapePythonString(e.getKey())).append("=");
-            Object v = e.getValue();
-            if (v instanceof String) call.append("'").append(escapePythonString((String) v)).append("'");
-            else if (v instanceof Boolean) call.append((Boolean) v ? "True" : "False");
-            else if (v instanceof List) {
-                call.append(v.toString().replace('[', '(').replace(']', ')'));
-            }
-            else call.append(v);
-        }
-        call.append(")");
-
-        engine.exec(call.toString());
+        // Pass kwargs via Jep's safe Java-to-Python conversion
+        engine.put(rv + "_kwargs", kwargs);
+        engine.exec(rv + "_raw = " + mv + "(" + rv + "_src, **" + rv + "_kwargs)");
 
         engine.put(rv + "_task", taskType.getKey());
         engine.exec(rv + " = jpy_extract_result(" + rv + "_raw[0], " + rv + "_task)");
@@ -249,10 +249,12 @@ public class Model implements AutoCloseable {
 
     /**
      * Async prediction on an image file.
-     * Note: Jep SharedInterpreter is thread-bound, so the actual prediction runs
-     * synchronously on the calling thread. The CompletableFuture wraps the result
-     * for API consistency. For true background execution, wrap the entire
-     * predict call in your own CompletableFuture.
+     * <p>
+     * Because Jep's SharedInterpreter is thread-bound, the prediction runs
+     * synchronously. Use {@code CompletableFuture.supplyAsync(() -> model.predict(...), yourExecutor)}
+     * with your own executor if you need to offload from the calling thread,
+     * but ensure all Model operations are serialized on the same thread that
+     * called {@code PythonRuntime.init()}.
      */
     public CompletableFuture<InferenceResult> predictAsync(String imagePath) {
         ensureOpen();
@@ -315,34 +317,34 @@ public class Model implements AutoCloseable {
     }
 
     /**
-     * Async video prediction.
+     * Async video prediction. Runs video processing synchronously and returns
+     * a CompletableFuture that completes when all frames have been processed.
      */
     public CompletableFuture<Void> predictVideoAsync(String videoPath, Consumer<InferenceResult> frameConsumer) {
         ensureOpen();
-        Thread t = new Thread(() -> {
-            try {
-                predictVideo(videoPath, frameConsumer);
-            } catch (Exception e) {
-                log.warn("Video async prediction failed", e);
-            }
-        }, "jpy-ml-video");
-        t.setDaemon(true);
-        t.start();
+        try {
+            predictVideo(videoPath, frameConsumer);
+        } catch (Exception e) {
+            log.warn("Video async prediction failed", e);
+        }
         return CompletableFuture.completedFuture(null);
     }
 
     public CompletableFuture<Void> predictVideoAsync(String videoPath, ModelConfig config, Consumer<InferenceResult> frameConsumer) {
         ensureOpen();
-        Thread t = new Thread(() -> {
-            try {
-                predictVideo(videoPath, config, frameConsumer);
-            } catch (Exception e) {
-                log.warn("Video async prediction failed", e);
-            }
-        }, "jpy-ml-video");
-        t.setDaemon(true);
-        t.start();
+        try {
+            predictVideo(videoPath, config, frameConsumer);
+        } catch (Exception e) {
+            log.warn("Video async prediction failed", e);
+        }
         return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Shutdown the async executor. Call during application teardown.
+     */
+    public static void shutdownAsync() {
+        asyncExecutor.shutdown();
     }
 
     private InferenceResult predictClean(String imagePath, ModelConfig config) throws JepException {
@@ -351,22 +353,9 @@ public class Model implements AutoCloseable {
         Map<String, Object> kwargs = config.toPythonKwargs();
         engine.put(rv + "_src", imagePath);
 
-        // Build the predict call
-        StringBuilder call = new StringBuilder();
-        call.append(rv).append("_raw = ").append(mv).append("(").append(rv).append("_src");
-        for (Map.Entry<String, Object> e : kwargs.entrySet()) {
-            call.append(", ").append(escapePythonString(e.getKey())).append("=");
-            Object v = e.getValue();
-            if (v instanceof String) call.append("'").append(escapePythonString((String) v)).append("'");
-            else if (v instanceof Boolean) call.append((Boolean) v ? "True" : "False");
-            else if (v instanceof List) {
-                call.append(v.toString().replace('[', '(').replace(']', ')'));
-            }
-            else call.append(v);
-        }
-        call.append(")");
-
-        engine.exec(call.toString());
+        // Pass kwargs via Jep's safe Java-to-Python conversion
+        engine.put(rv + "_kwargs", kwargs);
+        engine.exec(rv + "_raw = " + mv + "(" + rv + "_src, **" + rv + "_kwargs)");
 
         // Extract first result
         engine.put(rv + "_task", taskType.getKey());
@@ -534,9 +523,8 @@ public class Model implements AutoCloseable {
             // Put image list into Python (Jep converts Java List to Python list)
             engine.put(rv + "_batch_src", imagePaths);
 
-            // Build kwargs dict in Python
-            String dictStr = mapToPythonDict(kwargs);
-            engine.exec(rv + "_batch_kwargs = " + dictStr);
+            // Pass kwargs via Jep's safe Java-to-Python conversion
+            engine.put(rv + "_batch_kwargs", kwargs);
 
             // Run batch predict in Python
             engine.put(rv + "_task", taskType.getKey());
@@ -605,20 +593,8 @@ public class Model implements AutoCloseable {
 
         // Execute prediction
         engine.put(rv + "_src", imagePath);
-        StringBuilder call = new StringBuilder();
-        call.append(rv).append("_raw = ").append(mv).append("(").append(rv).append("_src");
-        for (Map.Entry<String, Object> e : kwargs.entrySet()) {
-            call.append(", ").append(escapePythonString(e.getKey())).append("=");
-            Object v = e.getValue();
-            if (v instanceof String) call.append("'").append(escapePythonString((String) v)).append("'");
-            else if (v instanceof Boolean) call.append((Boolean) v ? "True" : "False");
-            else if (v instanceof List) {
-                call.append(v.toString().replace('[', '(').replace(']', ')'));
-            }
-            else call.append(v);
-        }
-        call.append(")");
-        engine.exec(call.toString());
+        engine.put(rv + "_kwargs", kwargs);
+        engine.exec(rv + "_raw = " + mv + "(" + rv + "_src, **" + rv + "_kwargs)");
 
         // Get result count first to size buffers
         engine.exec(rv + "_count = len(" + rv + "_raw[0].boxes) if " + rv + "_raw[0].boxes is not None else 0");
@@ -735,10 +711,9 @@ public class Model implements AutoCloseable {
             String mv = "_jpy_mv" + id;
             String sv = "_jpy_st" + id;
             Map<String, Object> kwargs = config.toPythonKwargs();
-            String dictStr = mapToPythonDict(kwargs);
 
             engine.put(sv + "_src", videoPath);
-            engine.exec(sv + "_kwargs = " + dictStr);
+            engine.put(sv + "_kwargs", kwargs);
             engine.exec("jpy_stream_start(" + mv + ", " + sv + "_src, " + sv + "_kwargs)");
 
             // Read frames in chunks
@@ -793,10 +768,9 @@ public class Model implements AutoCloseable {
             String mv = "_jpy_mv" + id;
             String sv = "_jpy_st" + id;
             Map<String, Object> kwargs = config.toPythonKwargs();
-            String dictStr = mapToPythonDict(kwargs);
 
             engine.put(sv + "_src", source);
-            engine.exec(sv + "_kwargs = " + dictStr);
+            engine.put(sv + "_kwargs", kwargs);
             engine.exec("jpy_stream_start(" + mv + ", " + sv + "_src, " + sv + "_kwargs)");
 
             // Read frames one at a time for low latency
@@ -855,8 +829,7 @@ public class Model implements AutoCloseable {
             Map<String, Object> kwargs = config.toPythonDict();
 
             engine.put("_jpy_train_model_path", modelPath);
-            String dictStr = mapToPythonDict(kwargs);
-            engine.exec("_jpy_train_kwargs = " + dictStr);
+            engine.put("_jpy_train_kwargs", kwargs);
             boolean enableLogging = callback != null;
             engine.exec("_jpy_train_result = jpy_train(_jpy_train_model_path, _jpy_train_kwargs, enable_logging=" + (enableLogging ? "True" : "False") + ")");
 
@@ -959,8 +932,7 @@ public class Model implements AutoCloseable {
             kwargs.put("opset", config.getOpset());
             kwargs.put("imgsz", config.getImgsz());
 
-            String dictStr = mapToPythonDict(kwargs);
-            engine.exec("_jpy_exp_kwargs = " + dictStr);
+            engine.put("_jpy_exp_kwargs", kwargs);
             engine.put("_jpy_exp_format", config.getFormat().getKey());
             engine.exec("_jpy_exp_result = jpy_export(_jpy_exp_model_path, _jpy_exp_format, **_jpy_exp_kwargs)");
 
@@ -1023,33 +995,7 @@ public class Model implements AutoCloseable {
         return v instanceof Number ? ((Number) v).intValue() : 0;
     }
 
-    /**
-     * Escape a string for safe use in Python string literals.
-     * Escapes single quotes, backslashes, and newlines.
-     */
     private static String escapePythonString(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    private static String mapToPythonDict(Map<String, Object> map) {
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Object> e : map.entrySet()) {
-            if (!first) sb.append(", ");
-            first = false;
-            sb.append("'").append(escapePythonString(e.getKey())).append("': ");
-            Object v = e.getValue();
-            if (v instanceof String) sb.append("'").append(escapePythonString((String) v)).append("'");
-            else if (v instanceof Boolean) sb.append((Boolean) v ? "True" : "False");
-            else if (v instanceof Number) sb.append(v);
-            else sb.append("'").append(escapePythonString(String.valueOf(v))).append("'");
-        }
-        sb.append("}");
-        return sb.toString();
+        return PythonEscape.escape(s);
     }
 }

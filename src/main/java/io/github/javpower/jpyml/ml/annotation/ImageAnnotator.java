@@ -5,6 +5,7 @@ import io.github.javpower.jpyml.ml.result.*;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
 import io.github.javpower.jpyml.exception.InferenceException;
+import io.github.javpower.jpyml.util.PythonEscape;
 import jep.JepException;
 
 import java.awt.*;
@@ -82,7 +83,7 @@ public class ImageAnnotator {
                     ClassPrediction p = cr.getTopK().get(i);
                     sb.append("{'class_id': ").append(p.classId())
                             .append(", 'confidence': ").append(p.confidence())
-                            .append(", 'class_name': '").append(p.className()).append("'}");
+                            .append(", 'class_name': '").append(PythonEscape.escape(p.className())).append("'}");
                 }
             }
             case POSE -> {
@@ -117,7 +118,7 @@ public class ImageAnnotator {
                 + ", 'x2': " + b.x2() + ", 'y2': " + b.y2()
                 + ", 'confidence': " + p.confidence()
                 + ", 'class_id': " + p.classId()
-                + ", 'class_name': '" + p.className() + "'}";
+                + ", 'class_name': '" + PythonEscape.escape(p.className()) + "'}";
     }
 
     private String boxWithPolygonDict(ClassPrediction p, Mask m) {
@@ -157,6 +158,6 @@ public class ImageAnnotator {
                 + ", 'angle': " + rb.angleDegrees()
                 + ", 'confidence': " + p.confidence()
                 + ", 'class_id': " + p.classId()
-                + ", 'class_name': '" + p.className() + "'}";
+                + ", 'class_name': '" + PythonEscape.escape(p.className()) + "'}";
     }
 }

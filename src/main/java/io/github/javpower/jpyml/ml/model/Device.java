@@ -2,6 +2,7 @@ package io.github.javpower.jpyml.ml.model;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -9,6 +10,11 @@ import java.util.stream.Collectors;
  * Supports CPU, MPS (Apple Silicon), CUDA GPU, and multi-GPU configurations.
  */
 public class Device {
+
+    private static final Pattern VALID_DEVICE = Pattern.compile(
+        "^(?:cpu|mps|cuda:\\d+|\\d+(?:,\\d+)*|\\[\\d+(?:,\\d+)*\\])$"
+    );
+
     private final String pythonValue;
 
     private Device(String pythonValue) {
@@ -30,8 +36,14 @@ public class Device {
         return new Device(list.toString());
     }
 
-    /** Advanced: pass any Ultralytics-compatible device string */
-    public static Device fromString(String value) { return new Device(value); }
+    /** Advanced: pass any Ultralytics-compatible device string. Validates format. */
+    public static Device fromString(String value) {
+        if (!VALID_DEVICE.matcher(value).matches()) {
+            throw new IllegalArgumentException(
+                "Invalid device string: '" + value + "'. Expected: 'cpu', 'mps', 'cuda:N', 'N', 'N,M', or '[N,M]'");
+        }
+        return new Device(value);
+    }
 
     public String toPython() { return pythonValue; }
 
