@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -70,6 +71,7 @@ class LLMIntegrationTest {
 
     @Test
     @Order(3)
+    @org.junit.jupiter.api.Timeout(value = 5, unit = TimeUnit.MINUTES)
     void testFineTuneWithCallback() throws IOException {
         // Create a tiny training dataset
         Path datasetFile = Files.createTempFile("jpy-llm-test-data-", ".jsonl");
@@ -115,8 +117,11 @@ class LLMIntegrationTest {
                 .adapter(result.getAdapterPath());
 
         ChatResponse verifyResp = finetunedModel.chat(
-                ChatMessage.system("你是一个有用的助手"),
-                ChatMessage.user("你是谁")
+                List.of(
+                        ChatMessage.system("你是一个有用的助手"),
+                        ChatMessage.user("你是谁")
+                ),
+                GenerationConfig.create().doSample(false).maxNewTokens(64)
         );
 
         System.out.println("Verify response: " + verifyResp.getContent());
@@ -126,6 +131,7 @@ class LLMIntegrationTest {
 
     @Test
     @Order(4)
+    @org.junit.jupiter.api.Timeout(value = 5, unit = TimeUnit.MINUTES)
     void testAsyncFineTune() throws Exception {
         Path datasetFile = Files.createTempFile("jpy-llm-async-data-", ".jsonl");
         datasetFile.toFile().deleteOnExit();

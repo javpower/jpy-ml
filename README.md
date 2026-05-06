@@ -49,6 +49,7 @@ Just **production-ready ML in Java**.
 - **MediaPipe** — hand tracking (21 pts), face mesh (478 pts), pose estimation (33 pts)
 - **OpenCV** — image processing: blur, edges, contours, morphology, color conversion
 - **ONNX Runtime** — CPU/GPU inference from exported models
+- **LLM** — HuggingFace model download, chat inference, LoRA/QLoRA fine-tuning with real-time callbacks
 - **Full Pipeline** — train on custom data, validate, export to ONNX/TensorRT/CoreML
 
 ---
@@ -111,6 +112,19 @@ Just **production-ready ML in Java**.
 - **Face Mesh** — detect face landmarks (478 points)
 - **Pose Estimation** — detect body pose with 33 keypoints
 
+### LLM — Large Language Models
+- **LLMModel** — unified entry for model download, inference, and fine-tuning
+- **HuggingFace Hub** — `LLMModel.download("Qwen/Qwen2.5-0.5B-Instruct")` with local cache
+- **Chat Inference** — typed `ChatResponse` with token counts, supports `ChatMessage` role-based API
+- **LoRA/QLoRA Fine-Tuning** — parameter-efficient training via PEFT + TRL SFTTrainer
+- **Real-Time Callbacks** — per-step training progress via `TrainingCallback`
+- **Async Training** — `runAsync()` returning `CompletableFuture<LLMTrainingResult>`
+- **Quantization** — NF4/INT8 (CUDA), auto-detect based on platform
+- **Auto Device** — CPU / Apple MPS / NVIDIA CUDA auto-detection
+- **LoRA Adapter Merge** — `LLMModel.mergeAdapter()` to merge adapter into base model
+- **GenerationConfig** — temperature, top-p, max tokens, repetition penalty
+- **Auto Dependency Install** — transformers, peft, trl, accelerate installed on first use
+
 ---
 
 ## Environment
@@ -160,7 +174,7 @@ Just **production-ready ML in Java**.
 <dependency>
     <groupId>io.github.javpower</groupId>
     <artifactId>jpy-ml</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
@@ -205,7 +219,7 @@ java -version                   # Confirm: openjdk 17.0.19 Temurin
 ```bash
 mvn clean test
 
-# Expected: Tests run: 106, Failures: 0, Errors: 0, Skipped: 0
+# Expected: Tests run: 110, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 ### 5. Run Demo
@@ -245,6 +259,9 @@ jpy-ml/
 │   ├── _jpy_sam3.py                    # SAM 3 concept segmentation
 │   ├── _jpy_opencv.py                  # OpenCV operations
 │   ├── _jpy_mediapipe.py               # MediaPipe hand/face/pose
+│   ├── _jpy_llm_inference.py           # LLM chat inference
+│   ├── _jpy_llm_training.py            # LLM LoRA/QLoRA fine-tuning
+│   ├── _jpy_llm_download.py            # HuggingFace model download
 │   └── requirements.txt                # Python deps for production auto-install
 │
 ├── src/main/java/io/github/javpower/jpyml/
@@ -272,6 +289,19 @@ jpy-ml/
 │   │   │   ├── SAM3Model.java          # SAM 3 concept segmentation
 │   │   │   └── Prompt.java             # Point/Box/Mask/Text prompts
 │   │   │   └── ModelHub.java            # Model registry + auto-download
+│   ├── llm/                              # LLM module
+│   │   ├── LLMModel.java                 # Model download, load, chat, fine-tune entry
+│   │   ├── LLMFineTuner.java             # Fine-tuning builder (LoRA/QLoRA)
+│   │   ├── LLMTrainingResult.java        # Training result + merge adapter
+│   │   ├── DependencyManager.java        # Auto pip install for LLM deps
+│   │   ├── config/                       # LLM configs
+│   │   │   ├── LoRAConfig.java           # LoRA rank, alpha, target modules
+│   │   │   ├── LLMTrainConfig.java       # Training hyperparameters
+│   │   │   ├── GenerationConfig.java     # Inference generation params
+│   │   │   └── Quantization.java         # NF4, INT8, NONE, AUTO
+│   │   └── data/                         # LLM data types
+│   │       ├── ChatMessage.java          # role-based chat message
+│   │       └── ChatResponse.java         # Inference response with tokens
 │   │   ├── result/                     # Strongly typed results
 │   │   │   ├── InferenceResult.java    # Base interface
 │   │   │   ├── InferenceSpeed.java     # Pre/inference/postprocess timing
@@ -329,6 +359,7 @@ jpy-ml/
     ├── PythonRuntimeTest.java           # Platform detection (3 cases)
     ├── ModelIntegrationTest.java        # Full YOLO integration (18 cases)
     ├── SAMIntegrationTest.java          # SAM 2/3 integration (9 cases)
+    ├── LLMIntegrationTest.java          # LLM download, chat, fine-tune, async (4 cases)
     ├── NewFeaturesTest.java             # Serialization, byte[], async, hub, viz (17 cases)
     ├── OpenCVEngineTest.java            # OpenCV operations (8 cases)
     ├── MediaPipeEngineTest.java         # Hand/face/pose detection (4 cases)
@@ -806,6 +837,121 @@ ImageIO.write(annotated, "jpg", new File("output.jpg"));
 byte[] annotatedBytes = viz.visualizeToBytes(imageBytes, result);
 ```
 
+### LLM — Download & Chat Inference
+
+```java
+// Download model from HuggingFace Hub (cached at ~/.jpy-ml/llm-models/)
+LLMModel model = LLMModel.download("Qwen/Qwen2.5-0.5B-Instruct");
+
+// Or load from local path
+LLMModel model = LLMModel.load("/path/to/local/model");
+
+// Chat inference
+ChatResponse response = model.chat(
+    ChatMessage.system("You are a helpful assistant"),
+    ChatMessage.user("Hello, introduce yourself in one sentence")
+);
+
+System.out.println(response.getContent());
+System.out.println("Tokens: prompt=" + response.getPromptTokens()
+    + " completion=" + response.getCompletionTokens());
+
+// With generation config
+ChatResponse response = model.chat(
+    List.of(
+        ChatMessage.system("You are a helpful assistant"),
+        ChatMessage.user("Explain quantum computing")
+    ),
+    GenerationConfig.create()
+        .maxNewTokens(256)
+        .temperature(0.7)
+        .topP(0.9)
+        .repetitionPenalty(1.1)
+);
+```
+
+### LLM — LoRA Fine-Tuning
+
+```java
+LLMModel model = LLMModel.load("Qwen/Qwen2.5-0.5B-Instruct")
+    .quantize(Quantization.NONE); // macOS
+
+// Synchronous fine-tuning with real-time callbacks
+LLMTrainingResult result = model.fineTune()
+    .lora(LoRAConfig.create().rank(8).alpha(16))
+    .dataset("training_data.jsonl")
+    .config(LLMTrainConfig.create()
+        .epochs(3)
+        .batchSize(4)
+        .gradientAccumulation(4)
+        .learningRate(2e-4)
+        .maxSeqLength(2048)
+        .gradientCheckpointing(true))
+    .run((step, log) -> {
+        System.out.println("Step " + step + ": " + log);
+    });
+
+System.out.println("Adapter saved to: " + result.getAdapterPath());
+System.out.println("Final loss: " + result.getFinalLoss());
+```
+
+### LLM — Load Adapter & Inference
+
+```java
+// Load base model with trained LoRA adapter
+LLMModel finetuned = LLMModel.load("Qwen/Qwen2.5-0.5B-Instruct")
+    .adapter("/path/to/adapter");
+
+ChatResponse response = finetuned.chat(
+    ChatMessage.user("What is your name?")
+);
+System.out.println(response.getContent());
+```
+
+### LLM — Async Fine-Tuning
+
+```java
+CompletableFuture<LLMTrainingResult> future = model.fineTune()
+    .lora(LoRAConfig.create().rank(4).alpha(8))
+    .dataset("data.jsonl")
+    .config(LLMTrainConfig.create().epochs(2))
+    .runAsync((step, log) -> {
+        System.out.println("[async] " + log);
+    });
+
+// Do other work...
+
+LLMTrainingResult result = future.get(10, TimeUnit.MINUTES);
+```
+
+### LLM — Merge Adapter into Base Model
+
+```java
+LLMTrainingResult result = model.fineTune()
+    .dataset("data.jsonl")
+    .config(LLMTrainConfig.create().epochs(3))
+    .run();
+
+// Merge LoRA adapter into base model for standalone deployment
+String mergedPath = LLMModel.mergeAdapter(
+    model.getModelPath(),
+    result.getAdapterPath(),
+    "/path/to/merged-model"
+);
+```
+
+### LLM — Training Data Format (JSONL)
+
+```json
+{"messages": [{"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "1+1=2"}]}
+{"messages": [{"role": "user", "content": "What is Java?"}, {"role": "assistant", "content": "Java is a programming language."}]}
+```
+
+Also supports instruction format:
+```json
+{"instruction": "Translate to English", "input": "你好", "output": "Hello"}
+```
+
 ### Basic Python Operations
 
 ```java
@@ -852,11 +998,11 @@ engine.exec("for i in range(3): print(f'item {i}')",
 │  Jep 4.3.1 (JNI bridge)                 │
 │  libjep.jnilib from pip install jep      │
 ├──────────────────────────────────────────┤
-│  Python Helper Scripts (12 .py files)    │
+│  Python Helper Scripts (15 .py files)    │
 │  jpy_load_model / jpy_extract_result /   │
 │  jpy_train / jpy_export / jpy_validate / │
 │  jpy_sam2 / jpy_sam3 / jpy_opencv /      │
-│  jpy_mediapipe / ...                     │
+│  jpy_mediapipe / jpy_llm_* / ...         │
 ├──────────────────────────────────────────┤
 │  CPython 3.13 (.venv)                    │
 │  Ultralytics 8.4.45 + PyTorch 2.11       │
@@ -873,7 +1019,7 @@ engine.exec("for i in range(3): print(f'item {i}')",
 
 ## Test Results
 
-All 106 tests passing (0 skipped):
+All 110 tests passing (0 skipped):
 
 | Test Suite | Tests | Pass | Skip | Description |
 |-----------|-------|------|------|-------------|
@@ -882,6 +1028,7 @@ All 106 tests passing (0 skipped):
 | PythonRuntimeTest | 3 | 3 | 0 | Platform detection |
 | ModelIntegrationTest | 18 | 18 | 0 | Full YOLO integration (inference + batch + video + training + export) |
 | SAMIntegrationTest | 9 | 9 | 0 | SAM 2/3 integration (point/box/video/text/exemplar) |
+| LLMIntegrationTest | 4 | 4 | 0 | LLM download, chat, LoRA fine-tuning, async training |
 | NewFeaturesTest | 17 | 17 | 0 | Serialization, byte[] input, async, ModelHub, visualization |
 | TensorBufferPoolTest | 6 | 6 | 0 | Zero-copy buffer pool |
 | BoundingBoxTest | 10 | 10 | 0 | BoundingBox record |
@@ -926,6 +1073,15 @@ All 106 tests passing (0 skipped):
 | testSAM3ExemplarPrompt | sam3.pt | Image exemplar | Exemplar-based segmentation |
 | testSAM3FilterByScore | sam3.pt | Text("person") | Score filtering works |
 | testSAM3ModelClose | sam3.pt | — | Close lifecycle works |
+
+### LLMIntegrationTest details:
+
+| Test | Model | Task | Result |
+|------|-------|------|--------|
+| testDownloadModel | Qwen2.5-0.5B-Instruct | download | Model cached locally |
+| testChatInference | Qwen2.5-0.5B-Instruct | chat | Response with token counts |
+| testFineTuneWithCallback | Qwen2.5-0.5B-Instruct | LoRA fine-tune | Adapter saved, callback events received |
+| testAsyncFineTune | Qwen2.5-0.5B-Instruct | async LoRA | CompletableFuture completes |
 
 ### MediaPipeEngineTest details:
 
@@ -1022,6 +1178,11 @@ jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engin
 - [x] Model Hub auto-download (Model.preset)
 - [x] Java2D result visualization (ImageVisualizer)
 - [x] Async prediction API (predictAsync)
+- [x] LLM chat inference (HuggingFace Transformers)
+- [x] LoRA/QLoRA fine-tuning with real-time step callbacks
+- [x] Async fine-tuning API (runAsync)
+- [x] LoRA adapter merge into base model
+- [x] Auto dependency installation for LLM (transformers, peft, trl, accelerate)
 
 ### Next
 - [ ] Windows / Linux CI testing
@@ -1030,13 +1191,10 @@ jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engin
 ### Planned ML Engines
 
 #### Other Engines
-- [ ] **Transformers (HuggingFace)** — NLP, text generation, translation, embeddings
 - [ ] **Whisper** — speech-to-text, automatic speech recognition
 - [ ] **Stable Diffusion / FLUX** — image generation, inpainting, controlnet
-- [ ] **DeepSeek / LLM** — large language model inference
 
 ### Infrastructure
-- [ ] Async training with real-time streaming callbacks
 - [ ] Model registry / hub integration (download from URL)
 - [ ] Spring Boot starter auto-configuration
 - [ ] GraalVM native image support

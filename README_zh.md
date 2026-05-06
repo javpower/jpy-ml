@@ -50,6 +50,7 @@ try (Model model = Model.preset("yolov8n")) {
 - **OpenCV** — 图像处理：模糊、边缘检测、轮廓、形态学、色彩转换
 - **ONNX Runtime** — CPU/GPU 推理（导出模型）
 - **完整流水线** — 自定义数据训练、验证、导出为 ONNX/TensorRT/CoreML
+- **LLM** — HuggingFace 模型下载、对话推理、LoRA/QLoRA 微调（带实时回调）
 
 ---
 
@@ -111,6 +112,19 @@ try (Model model = Model.preset("yolov8n")) {
 - **面部网格** — 检测面部 478 个关键点
 - **姿态估计** — 检测身体 33 个关键点
 
+### LLM — 大语言模型
+- **LLMModel** — 统一入口：模型下载、推理、微调
+- **HuggingFace Hub** — `LLMModel.download("Qwen/Qwen2.5-0.5B-Instruct")` 自动缓存
+- **对话推理** — 类型化 `ChatResponse`，含 token 计数，支持 `ChatMessage` 角色化 API
+- **LoRA/QLoRA 微调** — 基于 PEFT + TRL SFTTrainer 的参数高效训练
+- **实时回调** — 逐 step 训练进度，通过 `TrainingCallback` 回调
+- **异步训练** — `runAsync()` 返回 `CompletableFuture<LLMTrainingResult>`
+- **量化支持** — NF4/INT8（CUDA），根据平台自动选择
+- **自动设备检测** — CPU / Apple MPS / NVIDIA CUDA 自动检测
+- **LoRA 合并** — `LLMModel.mergeAdapter()` 将适配器合并回基座模型
+- **生成配置** — temperature、top-p、max tokens、repetition penalty
+- **自动依赖安装** — transformers、peft、trl、accelerate 首次使用时自动安装
+
 ---
 
 ## Maven
@@ -119,7 +133,7 @@ try (Model model = Model.preset("yolov8n")) {
 <dependency>
     <groupId>io.github.javpower</groupId>
     <artifactId>jpy-ml</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
@@ -399,6 +413,121 @@ try (Model model = new Model("yolov8n.pt")) {
 }
 ```
 
+### LLM — 下载与对话推理
+
+```java
+// 从 HuggingFace Hub 下载模型（缓存到 ~/.jpy-ml/llm-models/）
+LLMModel model = LLMModel.download("Qwen/Qwen2.5-0.5B-Instruct");
+
+// 或从本地路径加载
+LLMModel model = LLMModel.load("/path/to/local/model");
+
+// 对话推理
+ChatResponse response = model.chat(
+    ChatMessage.system("你是一个有用的助手"),
+    ChatMessage.user("你好，请用一句话介绍你自己")
+);
+
+System.out.println(response.getContent());
+System.out.println("Tokens: prompt=" + response.getPromptTokens()
+    + " completion=" + response.getCompletionTokens());
+
+// 带生成配置
+ChatResponse response = model.chat(
+    List.of(
+        ChatMessage.system("你是一个有用的助手"),
+        ChatMessage.user("解释量子计算")
+    ),
+    GenerationConfig.create()
+        .maxNewTokens(256)
+        .temperature(0.7)
+        .topP(0.9)
+        .repetitionPenalty(1.1)
+);
+```
+
+### LLM — LoRA 微调
+
+```java
+LLMModel model = LLMModel.load("Qwen/Qwen2.5-0.5B-Instruct")
+    .quantize(Quantization.NONE); // macOS
+
+// 同步微调，带实时回调
+LLMTrainingResult result = model.fineTune()
+    .lora(LoRAConfig.create().rank(8).alpha(16))
+    .dataset("training_data.jsonl")
+    .config(LLMTrainConfig.create()
+        .epochs(3)
+        .batchSize(4)
+        .gradientAccumulation(4)
+        .learningRate(2e-4)
+        .maxSeqLength(2048)
+        .gradientCheckpointing(true))
+    .run((step, log) -> {
+        System.out.println("Step " + step + ": " + log);
+    });
+
+System.out.println("适配器保存到: " + result.getAdapterPath());
+System.out.println("最终 loss: " + result.getFinalLoss());
+```
+
+### LLM — 加载适配器推理
+
+```java
+// 加载基座模型 + 训练好的 LoRA 适配器
+LLMModel finetuned = LLMModel.load("Qwen/Qwen2.5-0.5B-Instruct")
+    .adapter("/path/to/adapter");
+
+ChatResponse response = finetuned.chat(
+    ChatMessage.user("你叫什么名字？")
+);
+System.out.println(response.getContent());
+```
+
+### LLM — 异步微调
+
+```java
+CompletableFuture<LLMTrainingResult> future = model.fineTune()
+    .lora(LoRAConfig.create().rank(4).alpha(8))
+    .dataset("data.jsonl")
+    .config(LLMTrainConfig.create().epochs(2))
+    .runAsync((step, log) -> {
+        System.out.println("[异步] " + log);
+    });
+
+// 做其他事情...
+
+LLMTrainingResult result = future.get(10, TimeUnit.MINUTES);
+```
+
+### LLM — 合并适配器到基座模型
+
+```java
+LLMTrainingResult result = model.fineTune()
+    .dataset("data.jsonl")
+    .config(LLMTrainConfig.create().epochs(3))
+    .run();
+
+// 将 LoRA 适配器合并到基座模型，用于独立部署
+String mergedPath = LLMModel.mergeAdapter(
+    model.getModelPath(),
+    result.getAdapterPath(),
+    "/path/to/merged-model"
+);
+```
+
+### LLM — 训练数据格式（JSONL）
+
+```json
+{"messages": [{"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "1+1=2"}]}
+{"messages": [{"role": "user", "content": "什么是Java？"}, {"role": "assistant", "content": "Java是一种编程语言。"}]}
+```
+
+也支持 instruction 格式：
+```json
+{"instruction": "翻译成英文", "input": "你好", "output": "Hello"}
+```
+
 ---
 
 ## 架构
@@ -433,7 +562,7 @@ try (Model model = new Model("yolov8n.pt")) {
 
 ## 测试覆盖
 
-全部 106 个测试通过（0 跳过）：
+全部 110 个测试通过（0 跳过）：
 
 | 测试套件 | 数量 | 说明 |
 |---------|------|------|
@@ -442,6 +571,7 @@ try (Model model = new Model("yolov8n.pt")) {
 | PythonRuntimeTest | 3 | 平台检测 |
 | ModelIntegrationTest | 18 | 完整 YOLO 集成（推理 + 批量 + 视频 + 训练 + 导出） |
 | SAMIntegrationTest | 9 | SAM 2/3 集成（点/框/视频/文本/样本） |
+| LLMIntegrationTest | 4 | LLM 下载、对话、LoRA 微调、异步训练 |
 | NewFeaturesTest | 17 | 序列化、byte[]输入、异步、模型中心、可视化 |
 | TensorBufferPoolTest | 6 | 零拷贝缓冲池 |
 | BoundingBoxTest | 10 | BoundingBox 记录类 |
@@ -456,6 +586,7 @@ try (Model model = new Model("yolov8n.pt")) {
 - YOLOv8 和 YOLO26 模型
 - SAM 2 交互式分割 + 视频跟踪
 - SAM 3 文本提示 + 图像样本分割
+- LLM 模型下载、对话推理、LoRA/QLoRA 微调（含异步训练）
 - MediaPipe 手部（21 关键点）、面部（478 关键点）、姿态（33 关键点）
 - OpenCV 图像处理（颜色转换、滤波、边缘检测、轮廓、形态学）
 - 训练（含 epoch 回调和指标）
@@ -518,6 +649,11 @@ jpy-ml 的定位是通用 Java-Python ML 桥接框架。YOLO 是第一个引擎 
 - [x] 模型中心自动下载（Model.preset）
 - [x] Java2D 结果可视化（ImageVisualizer）
 - [x] 异步推理 API（predictAsync）
+- [x] LLM 对话推理（HuggingFace Transformers）
+- [x] LoRA/QLoRA 微调，带实时 step 回调
+- [x] 异步微调 API（runAsync）
+- [x] LoRA 适配器合并到基座模型
+- [x] LLM 依赖自动安装（transformers、peft、trl、accelerate）
 
 ### 近期
 - [ ] Windows / Linux CI 测试
@@ -526,13 +662,10 @@ jpy-ml 的定位是通用 Java-Python ML 桥接框架。YOLO 是第一个引擎 
 ### 计划中的 ML 引擎
 
 #### 其他引擎
-- [ ] **Transformers (HuggingFace)** — NLP、文本生成、翻译、向量嵌入
 - [ ] **Whisper** — 语音识别、语音转文字
 - [ ] **Stable Diffusion / FLUX** — 图像生成、局部重绘、ControlNet
-- [ ] **DeepSeek / LLM** — 大语言模型推理
 
 ### 基础设施
-- [ ] 异步训练实时流式回调
 - [ ] 模型仓库 / Hub 集成（从 URL 下载）
 - [ ] Spring Boot Starter 自动配置
 - [ ] GraalVM Native Image 支持

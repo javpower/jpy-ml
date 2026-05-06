@@ -54,9 +54,19 @@ public class LLMFineTuner {
 
     /**
      * Run fine-tuning asynchronously with real-time callbacks.
+     * Training runs on the calling thread (Jep SharedInterpreter is thread-bound),
+     * while progress callbacks arrive on a background monitor thread.
+     * The returned CompletableFuture completes when training finishes.
      */
     public CompletableFuture<LLMTrainingResult> runAsync(TrainingCallback callback) {
-        return CompletableFuture.supplyAsync(() -> runInternal(callback));
+        CompletableFuture<LLMTrainingResult> future = new CompletableFuture<>();
+        try {
+            LLMTrainingResult result = runInternal(callback);
+            future.complete(result);
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+        }
+        return future;
     }
 
     @SuppressWarnings("unchecked")
@@ -96,6 +106,7 @@ public class LLMFineTuner {
                 engine.put("_jpy_llm_progress_file", progressFile != null ? progressFile.toString() : "");
                 engine.put("_jpy_llm_cancel_file", cancelFile != null ? cancelFile.toString() : "");
 
+                log.info("Starting Python training: model={}, dataset={}", model.getModelPath(), datasetPath);
                 engine.exec(
                         "_jpy_llm_result = jpy_llm_train(" +
                         "_jpy_llm_model_path, _jpy_llm_dataset, " +
@@ -110,6 +121,7 @@ public class LLMFineTuner {
 
                 String adapterPath = (String) result.getOrDefault("adapter_path", "");
                 Object finalLoss = result.get("final_loss");
+                log.info("Python training completed: adapter={}, steps={}", adapterPath, logList.size());
 
                 return new LLMTrainingResult(
                         adapterPath,
@@ -118,7 +130,12 @@ public class LLMFineTuner {
                 );
             } finally {
                 if (monitor != null) {
-                    String error = monitor.awaitCompletion();
+                    String error = monitor.awaitCompletion(60);
+                    if (error == null && !monitor.isCompleted()) {
+                        log.warn("ProgressMonitor did not receive 'done' event, forcing stop");
+                        monitor.stop();
+                        error = "Training interrupted — progress monitor timed out";
+                    }
                     if (callback != null) callback.onComplete(error);
                 }
                 if (progressFile != null) Files.deleteIfExists(progressFile);

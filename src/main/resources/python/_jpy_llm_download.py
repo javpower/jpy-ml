@@ -27,11 +27,18 @@ def jpy_llm_download(model_id, cache_dir=None, progress_file=None):
     if cache_dir is None:
         cache_dir = os.path.expanduser("~/.jpy-ml/llm-models")
 
-    # Check if already cached
-    local_path = os.path.join(cache_dir, model_id.replace("/", "--"))
-    if os.path.isdir(local_path) and os.path.exists(os.path.join(local_path, "config.json")):
-        jpy_progress_write("download_done", {"path": local_path, "cached": True})
-        return {"path": local_path, "cached": True}
+    # Check if already cached (snapshot_download uses models--<id> directory)
+    local_path = os.path.join(cache_dir, "models--" + model_id.replace("/", "--"))
+    if os.path.isdir(local_path):
+        # Find the latest snapshot
+        snapshots_dir = os.path.join(local_path, "snapshots")
+        if os.path.isdir(snapshots_dir):
+            versions = os.listdir(snapshots_dir)
+            if versions:
+                latest = os.path.join(snapshots_dir, versions[-1])
+                if os.path.exists(os.path.join(latest, "config.json")):
+                    jpy_progress_write("download_done", {"path": latest, "cached": True})
+                    return {"path": latest, "cached": True}
 
     from huggingface_hub import snapshot_download
 

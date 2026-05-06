@@ -59,6 +59,19 @@ public class ProgressMonitor {
     }
 
     /**
+     * Block until the monitor receives a "done" event, is stopped, or timeout elapses.
+     *
+     * @param timeoutSeconds max seconds to wait
+     * @return error message from the "done" event, null if successful, or null on timeout
+     */
+    public String awaitCompletion(long timeoutSeconds) throws InterruptedException {
+        if (monitorThread != null) {
+            monitorThread.join(timeoutSeconds * 1000);
+        }
+        return errorMessage;
+    }
+
+    /**
      * Signal the monitor to stop polling.
      */
     public void stop() {
@@ -118,10 +131,12 @@ public class ProgressMonitor {
         if (type == null) return;
 
         switch (type) {
-            case "epoch" -> {
-                int epoch = extractIntValue(line, "epoch");
-                callback.onEpoch(epoch, line);
+            case "epoch", "step" -> {
+                int step = extractIntValue(line, "step");
+                if (step == 0) step = extractIntValue(line, "epoch");
+                callback.onEpoch(step, line);
             }
+            case "info" -> log.info("Training: {}", extractStringValue(line, "status"));
             case "done" -> {
                 String error = extractStringValue(line, "error");
                 if (error != null && !error.isEmpty()) {

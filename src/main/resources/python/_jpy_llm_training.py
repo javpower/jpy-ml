@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import platform
+import inspect
 import torch
 
 # --- Platform detection ---
@@ -87,23 +88,6 @@ def _format_conversation(example, tokenizer):
 
 _train_log = []
 
-class _LLMProgressCallback:
-    """Transformers Trainer callback for real-time progress reporting."""
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        global _train_log
-        if logs is None:
-            return
-        entry = {
-            "step": state.global_step,
-            "epoch": round(state.epoch, 2),
-            "loss": logs.get("loss"),
-            "learning_rate": logs.get("learning_rate"),
-        }
-        _train_log.append(entry)
-        jpy_progress_write("step", entry)
-        if jpy_progress_check_cancel():
-            control.should_training_stop = True
-
 
 def _build_bnb_config(quantization):
     """Build BitsAndBytes config from quantization string."""
@@ -143,12 +127,16 @@ def jpy_llm_train(model_path, dataset_path, lora_kwargs, train_kwargs,
     if progress_file:
         jpy_progress_init(progress_file, cancel_file)
 
+    # Ensure Java Maps from Jep are fully converted to native Python dicts
+    lora_kwargs = dict(lora_kwargs) if lora_kwargs else {}
+    train_kwargs = dict(train_kwargs) if train_kwargs else {}
+
     from transformers import (
         AutoModelForCausalLM, AutoTokenizer,
-        TrainingArguments, TrainerCallback
+        TrainerCallback
     )
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
-    from trl import SFTTrainer
+    from trl import SFTTrainer, SFTConfig
     from datasets import load_dataset
 
     # --- Device & quantization ---
@@ -218,68 +206,81 @@ def jpy_llm_train(model_path, dataset_path, lora_kwargs, train_kwargs,
 
     jpy_progress_write("info", {"status": "model_loaded", "trainable_params": str(trainable)})
 
-    # --- Dataset ---
-    dataset = load_dataset("json", data_files=dataset_path)
-    dataset = dataset.map(lambda x: _format_conversation(x, tokenizer))
-
-    # --- Training args ---
-    output_dir = train_kwargs.pop("output_dir", os.path.expanduser("~/.jpy-ml/llm-output"))
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Remove non-TrainingArguments keys
-    train_kwargs.pop("device", None)
-    train_kwargs.pop("quantization", None)
-
-    training_args = TrainingArguments(
-        output_dir=output_dir,
-        num_train_epochs=train_kwargs.get("epochs", 3),
-        per_device_train_batch_size=train_kwargs.get("batch_size", 4),
-        gradient_accumulation_steps=train_kwargs.get("gradient_accumulation", 4),
-        learning_rate=train_kwargs.get("learning_rate", 2e-4),
-        lr_scheduler_type=train_kwargs.get("lr_scheduler", "cosine"),
-        warmup_steps=train_kwargs.get("warmup_steps", 100),
-        max_grad_norm=1.0,
-        logging_steps=train_kwargs.get("logging_steps", 10),
-        save_steps=train_kwargs.get("save_steps", 500),
-        save_total_limit=2,
-        bf16=(device != "cpu" and not bnb_config),
-        fp16=False,
-        gradient_checkpointing=train_kwargs.get("gradient_checkpointing", True),
-        seed=train_kwargs.get("seed", 42),
-        report_to="none",
-        optim="adamw_torch",
-    )
-
-    # Build callback that implements both progress writing and cancellation
-    class _ProgressCB(TrainerCallback):
-        def on_log(self, args, state, control, logs=None, **kwargs):
-            global _train_log
-            if logs is None:
-                return
-            entry = {
-                "step": state.global_step,
-                "epoch": round(state.epoch, 2),
-                "loss": logs.get("loss"),
-                "learning_rate": logs.get("learning_rate"),
-            }
-            _train_log.append(entry)
-            jpy_progress_write("step", entry)
-            if jpy_progress_check_cancel():
-                control.should_training_stop = True
-
-    trainer = SFTTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=dataset["train"],
-        tokenizer=tokenizer,
-        max_seq_length=train_kwargs.get("max_seq_length", 2048),
-        callbacks=[_ProgressCB()],
-    )
-
-    jpy_progress_write("info", {"status": "training_started"})
-
     error_msg = None
     try:
+        # --- Dataset ---
+        dataset = load_dataset("json", data_files=dataset_path)
+        dataset = dataset.map(lambda x: _format_conversation(x, tokenizer))
+
+        # --- Training args ---
+        output_dir = train_kwargs.pop("output_dir", os.path.expanduser("~/.jpy-ml/llm-output"))
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Remove non-TrainingArguments keys
+        train_kwargs.pop("device", None)
+        train_kwargs.pop("quantization", None)
+
+        # SFTConfig extends TrainingArguments with SFT-specific params
+        sft_config_params = set(inspect.signature(SFTConfig.__init__).parameters)
+
+        _config_kwargs = dict(
+            output_dir=output_dir,
+            num_train_epochs=train_kwargs.get("epochs", 3),
+            per_device_train_batch_size=train_kwargs.get("batch_size", 4),
+            gradient_accumulation_steps=train_kwargs.get("gradient_accumulation", 4),
+            learning_rate=train_kwargs.get("learning_rate", 2e-4),
+            lr_scheduler_type=train_kwargs.get("lr_scheduler", "cosine"),
+            warmup_steps=train_kwargs.get("warmup_steps", 100),
+            max_grad_norm=1.0,
+            logging_steps=train_kwargs.get("logging_steps", 10),
+            save_steps=train_kwargs.get("save_steps", 500),
+            save_total_limit=2,
+            bf16=(device != "cpu" and not bnb_config),
+            fp16=False,
+            gradient_checkpointing=train_kwargs.get("gradient_checkpointing", True),
+            seed=train_kwargs.get("seed", 42),
+            report_to="none",
+            optim="adamw_torch",
+        )
+        # max_seq_length -> max_length for trl >= 1.0 (SFTConfig)
+        if "max_length" in sft_config_params:
+            _config_kwargs["max_length"] = train_kwargs.get("max_seq_length", 2048)
+
+        training_args = SFTConfig(**_config_kwargs)
+
+        # Build callback that implements both progress writing and cancellation
+        class _ProgressCB(TrainerCallback):
+            def on_log(self, args, state, control, logs=None, **kwargs):
+                global _train_log
+                if logs is None:
+                    return
+                entry = {
+                    "step": state.global_step,
+                    "epoch": round(state.epoch, 2),
+                    "loss": logs.get("loss"),
+                    "learning_rate": logs.get("learning_rate"),
+                }
+                _train_log.append(entry)
+                jpy_progress_write("step", entry)
+                if jpy_progress_check_cancel():
+                    control.should_training_stop = True
+
+        # SFTTrainer: trl >= 0.12 uses 'processing_class' instead of 'tokenizer'
+        _sft_params = set(inspect.signature(SFTTrainer.__init__).parameters)
+        _trainer_kwargs = dict(
+            model=model,
+            args=training_args,
+            train_dataset=dataset["train"],
+            callbacks=[_ProgressCB()],
+        )
+        if "processing_class" in _sft_params:
+            _trainer_kwargs["processing_class"] = tokenizer
+        else:
+            _trainer_kwargs["tokenizer"] = tokenizer
+
+        trainer = SFTTrainer(**_trainer_kwargs)
+
+        jpy_progress_write("info", {"status": "training_started"})
         trainer.train()
     except Exception as e:
         error_msg = str(e)
