@@ -324,20 +324,22 @@ public class Model implements AutoCloseable {
         ensureOpen();
         try {
             predictVideo(videoPath, frameConsumer);
+            return CompletableFuture.completedFuture(null);
         } catch (Exception e) {
             log.warn("Video async prediction failed", e);
+            return CompletableFuture.failedFuture(e);
         }
-        return CompletableFuture.completedFuture(null);
     }
 
     public CompletableFuture<Void> predictVideoAsync(String videoPath, ModelConfig config, Consumer<InferenceResult> frameConsumer) {
         ensureOpen();
         try {
             predictVideo(videoPath, config, frameConsumer);
+            return CompletableFuture.completedFuture(null);
         } catch (Exception e) {
             log.warn("Video async prediction failed", e);
+            return CompletableFuture.failedFuture(e);
         }
-        return CompletableFuture.completedFuture(null);
     }
 
     /**

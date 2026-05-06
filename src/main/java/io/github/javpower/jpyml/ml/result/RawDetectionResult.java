@@ -30,9 +30,9 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
     private final Map<Integer, String> classNames;
 
     // Zero-copy buffers (directly from Python via DirectNDArray)
-    private final FloatBuffer boxesXYXY;  // shape: (N, 4) - x1, y1, x2, y2 per box
-    private final FloatBuffer confidences; // shape: (N,) - confidence per box
-    private final IntBuffer classIds;      // shape: (N,) - class id per box
+    private FloatBuffer boxesXYXY;  // shape: (N, 4) - x1, y1, x2, y2 per box
+    private FloatBuffer confidences; // shape: (N,) - confidence per box
+    private IntBuffer classIds;      // shape: (N,) - class id per box
     private final int boxCount;
 
     // Lazy-loaded strongly-typed list
@@ -40,6 +40,8 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
 
     // Buffer pool reference for cleanup
     private final TensorBufferPool bufferPool;
+
+    private boolean released = false;
 
     public RawDetectionResult(String sourcePath, int origWidth, int origHeight,
                               InferenceSpeed speed, Map<Integer, String> classNames,
@@ -55,6 +57,12 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
         this.classIds = classIds;
         this.boxCount = boxCount;
         this.bufferPool = TensorBufferPool.getInstance();
+    }
+
+    private void ensureNotReleased() {
+        if (released) {
+            throw new IllegalStateException("RawDetectionResult has been released");
+        }
     }
 
     @Override
@@ -98,6 +106,7 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      * @return list of ClassPrediction objects
      */
     public List<ClassPrediction> getBoxes() {
+        ensureNotReleased();
         if (boxesList == null) {
             boxesList = new ArrayList<>(boxCount);
             for (int i = 0; i < boxCount; i++) {
@@ -145,6 +154,7 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      * @return direct FloatBuffer containing box coordinates
      */
     public FloatBuffer getRawBoxesXYXY() {
+        ensureNotReleased();
         boxesXYXY.rewind();
         return boxesXYXY;
     }
@@ -157,6 +167,7 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      * @return direct FloatBuffer containing confidences
      */
     public FloatBuffer getRawConfidences() {
+        ensureNotReleased();
         confidences.rewind();
         return confidences;
     }
@@ -169,6 +180,7 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      * @return direct IntBuffer containing class IDs
      */
     public IntBuffer getRawClassIds() {
+        ensureNotReleased();
         classIds.rewind();
         return classIds;
     }
@@ -190,6 +202,7 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      * @return BoundingBox with coordinates
      */
     public BoundingBox getBoxAt(int index) {
+        ensureNotReleased();
         if (index < 0 || index >= boxCount) {
             throw new IndexOutOfBoundsException("Box index " + index + " out of range [0, " + boxCount + ")");
         }
@@ -209,6 +222,7 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      * @return confidence value
      */
     public float getConfidenceAt(int index) {
+        ensureNotReleased();
         if (index < 0 || index >= boxCount) {
             throw new IndexOutOfBoundsException("Box index " + index + " out of range [0, " + boxCount + ")");
         }
@@ -222,6 +236,7 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      * @return class ID
      */
     public int getClassIdAt(int index) {
+        ensureNotReleased();
         if (index < 0 || index >= boxCount) {
             throw new IndexOutOfBoundsException("Box index " + index + " out of range [0, " + boxCount + ")");
         }
@@ -234,9 +249,16 @@ public class RawDetectionResult implements RawInferenceResult, AutoCloseable {
      */
     @Override
     public void release() {
-        bufferPool.release(boxesXYXY);
-        bufferPool.release(confidences);
-        bufferPool.release(classIds);
+        if (!released) {
+            released = true;
+            boxesList = null;
+            bufferPool.release(boxesXYXY);
+            bufferPool.release(confidences);
+            bufferPool.release(classIds);
+            boxesXYXY = null;
+            confidences = null;
+            classIds = null;
+        }
     }
 
     /**

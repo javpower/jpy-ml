@@ -5,8 +5,7 @@ import jep.*;
 
 import java.io.Closeable;
 import java.nio.file.Path;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 import org.slf4j.Logger;
@@ -15,9 +14,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Thread-safe Python engine backed by Jep.
  * <p>
- * Uses a singleton SharedInterpreter with ReadWriteLock for concurrency.
- * Read operations (eval, get) can run concurrently;
- * write operations (exec, put) are mutually exclusive.
+ * Uses a singleton SharedInterpreter with ReentrantLock for mutual exclusion.
+ * Jep's SharedInterpreter is thread-bound, so all operations are serialized.
  * <p>
  * Usage:
  * <pre>
@@ -31,7 +29,7 @@ import org.slf4j.LoggerFactory;
 public class PythonEngine implements Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(PythonEngine.class);
-    private static final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private static final ReentrantLock lock = new ReentrantLock();
     private static PythonEngine instance;
     private static boolean jepConfigured = false;
     private static boolean sharedInterpCreated = false;
@@ -81,6 +79,7 @@ public class PythonEngine implements Closeable {
         if (instance != null && !instance.closed) {
             instance.close();
         }
+        PythonScriptLoader.reset();
         instance = createInternal(config);
         return instance;
     }
@@ -142,11 +141,11 @@ public class PythonEngine implements Closeable {
     @SuppressWarnings("unchecked")
     public <T> T eval(String expression) throws JepException {
         ensureOpen();
-        lock.readLock().lock();
+        lock.lock();
         try {
             return (T) interpreter.getValue(expression);
         } finally {
-            lock.readLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -155,11 +154,11 @@ public class PythonEngine implements Closeable {
      */
     public <T> T eval(String expression, Class<T> type) throws JepException {
         ensureOpen();
-        lock.readLock().lock();
+        lock.lock();
         try {
             return interpreter.getValue(expression, type);
         } finally {
-            lock.readLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -168,11 +167,11 @@ public class PythonEngine implements Closeable {
      */
     public void exec(String code) throws JepException {
         ensureOpen();
-        lock.writeLock().lock();
+        lock.lock();
         try {
             interpreter.exec(code);
         } finally {
-            lock.writeLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -181,7 +180,7 @@ public class PythonEngine implements Closeable {
      */
     public void exec(String code, Consumer<String> stdout, Consumer<String> stderr) throws JepException {
         ensureOpen();
-        lock.writeLock().lock();
+        lock.lock();
         boolean stdoutCaptured = false;
         boolean stderrCaptured = false;
         try {
@@ -230,7 +229,7 @@ public class PythonEngine implements Closeable {
                 }
             } catch (Exception ignored) {
             }
-            lock.writeLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -239,11 +238,11 @@ public class PythonEngine implements Closeable {
      */
     public void put(String name, Object value) throws JepException {
         ensureOpen();
-        lock.writeLock().lock();
+        lock.lock();
         try {
             interpreter.set(name, value);
         } finally {
-            lock.writeLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -253,11 +252,11 @@ public class PythonEngine implements Closeable {
     @SuppressWarnings("unchecked")
     public <T> T get(String name) throws JepException {
         ensureOpen();
-        lock.readLock().lock();
+        lock.lock();
         try {
             return (T) interpreter.getValue(name);
         } finally {
-            lock.readLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -266,11 +265,11 @@ public class PythonEngine implements Closeable {
      */
     public <T> T get(String name, Class<T> type) throws JepException {
         ensureOpen();
-        lock.readLock().lock();
+        lock.lock();
         try {
             return interpreter.getValue(name, type);
         } finally {
-            lock.readLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -278,6 +277,9 @@ public class PythonEngine implements Closeable {
      * Import a Python module.
      */
     public void importModule(String module) throws JepException {
+        if (!module.matches("[a-zA-Z_][a-zA-Z0-9_.]*")) {
+            throw new IllegalArgumentException("Invalid module name: " + module);
+        }
         exec("import " + module);
     }
 
@@ -286,7 +288,7 @@ public class PythonEngine implements Closeable {
      */
     public void runResourceScript(String resourcePath) throws JepException {
         ensureOpen();
-        lock.writeLock().lock();
+        lock.lock();
         try {
             try (var is = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
                 if (is == null) {
@@ -298,7 +300,7 @@ public class PythonEngine implements Closeable {
         } catch (java.io.IOException e) {
             throw new JepException("Failed to read resource: " + resourcePath, e);
         } finally {
-            lock.writeLock().unlock();
+            lock.unlock();
         }
     }
 
@@ -312,6 +314,11 @@ public class PythonEngine implements Closeable {
             return true;
         } catch (Exception e) {
             return false;
+        } finally {
+            try {
+                exec("del _jpy_check_mod");
+            } catch (Exception ignored) {
+            }
         }
     }
 
