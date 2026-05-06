@@ -207,7 +207,8 @@ public class PythonRuntime {
         if (!initialized.get()) return;
         try {
             PythonEngine.shutdown();
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.debug("Error during engine shutdown: {}", e.getMessage());
         }
         initialized.set(false);
         pythonHome = null;

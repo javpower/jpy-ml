@@ -6,7 +6,7 @@
 
     <groupId>io.github.javpower</groupId>
     <artifactId>jpy-ml</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <packaging>jar</packaging>
 
     <name>jpy-ml</name>
@@ -33,7 +33,7 @@
     <scm>
         <connection>scm:git:git@github.com:javpower/jpy-ml.git</connection>
         <developerConnection>scm:git:git@github.com:javpower/jpy-ml.git</developerConnection>
-        <url>git@github.com:javpower/jpy-ml.git</url>
+        <url>https://github.com/javpower/jpy-ml</url>
     </scm>
 
     <properties>
@@ -61,7 +61,7 @@
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
             <version>1.5.6</version>
-            <scope>runtime</scope>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>

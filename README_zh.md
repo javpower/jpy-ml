@@ -119,7 +119,7 @@ try (Model model = Model.preset("yolov8n")) {
 <dependency>
     <groupId>io.github.javpower</groupId>
     <artifactId>jpy-ml</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
 </dependency>
 ```
 

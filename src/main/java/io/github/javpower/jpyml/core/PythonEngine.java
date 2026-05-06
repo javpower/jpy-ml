@@ -35,7 +35,7 @@ public class PythonEngine implements Closeable {
     private static boolean sharedInterpCreated = false;
 
     private final Jep interpreter;
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     private PythonEngine(Jep interpreter) {
         this.interpreter = interpreter;
@@ -57,10 +57,10 @@ public class PythonEngine implements Closeable {
      * Shutdown the singleton engine. Called by PythonRuntime.shutdown().
      */
     public static synchronized void shutdown() {
-        if (instance != null && !instance.closed) {
+        if (instance != null) {
             instance.close();
+            instance = null;
         }
-        instance = null;
     }
 
     /**
@@ -96,7 +96,8 @@ public class PythonEngine implements Closeable {
             if (jepLib != null) {
                 try {
                     MainInterpreter.setJepLibraryPath(jepLib.toString());
-                } catch (IllegalStateException ignored) {
+                } catch (IllegalStateException e) {
+                    log.debug("Jep library path already set: {}", e.getMessage());
                 }
             }
             jepConfigured = true;
@@ -122,17 +123,13 @@ public class PythonEngine implements Closeable {
         // Python 3.13+ / PyTorch GIL safety: ensure GIL is held and check version
         try {
             interp.exec("import sys");
-            String pyVersion = interp.getValue("sys.version", String.class);
-            if (pyVersion != null && pyVersion.startsWith("3.1")) {
-                int minor = Integer.parseInt(pyVersion.substring(3, 4));
-                if (minor >= 13) {
-                    log.warn("Python {} detected. PyTorch/JEP may have GIL compatibility issues with 3.13+. " +
-                            "Consider using Python 3.11 or 3.12 for maximum stability.", pyVersion.substring(0, 5));
-                    // Force GIL acquisition for this thread
-                    interp.exec(
-                        "import _thread; _thread.allocate_lock()"  // ensure GIL infrastructure is active
-                    );
-                }
+            int major = interp.getValue("sys.version_info.major", Integer.class);
+            int minor = interp.getValue("sys.version_info.minor", Integer.class);
+            if (major == 3 && minor >= 13) {
+                String pyVersion = interp.getValue("sys.version", String.class);
+                log.warn("Python {} detected. PyTorch/JEP may have GIL compatibility issues with 3.13+. " +
+                        "Consider using Python 3.11 or 3.12 for maximum stability.", pyVersion.substring(0, 5));
+                interp.exec("import _thread; _thread.allocate_lock()");
             }
         } catch (Exception e) {
             log.debug("Python version check skipped: {}", e.getMessage());
@@ -240,14 +237,16 @@ public class PythonEngine implements Closeable {
                 if (stdoutCaptured) {
                     interpreter.exec("sys.stdout = _jpy_cap_stdout");
                 }
-            } catch (Exception ignored) {
-            }
-            try {
-                if (stderrCaptured) {
-                    interpreter.exec("sys.stderr = _jpy_cap_stderr");
+            } catch (Exception e) {
+                    log.debug("Failed to restore stdout: {}", e.getMessage());
                 }
-            } catch (Exception ignored) {
-            }
+                try {
+                    if (stderrCaptured) {
+                        interpreter.exec("sys.stderr = _jpy_cap_stderr");
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to restore stderr: {}", e.getMessage());
+                }
             lock.unlock();
         }
     }
@@ -336,7 +335,8 @@ public class PythonEngine implements Closeable {
         } finally {
             try {
                 exec("del _jpy_check_mod");
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Failed to cleanup _jpy_check_mod: {}", e.getMessage());
             }
         }
     }
@@ -368,15 +368,19 @@ public class PythonEngine implements Closeable {
 
     @Override
     public void close() {
-        if (!closed && interpreter != null) {
-            closed = true;
-            log.info("Closing PythonEngine");
-            try {
-                interpreter.close();
-            } catch (Exception ignored) {
+        lock.lock();
+        try {
+            if (!closed && interpreter != null) {
+                closed = true;
+                log.info("Closing PythonEngine");
+                try {
+                    interpreter.close();
+                } catch (Exception e) {
+                    log.debug("Error closing interpreter: {}", e.getMessage());
+                }
             }
-            // Note: do NOT reset sharedInterpCreated here.
-            // SharedInterpreter.setConfig() can only be called once per JVM.
+        } finally {
+            lock.unlock();
         }
     }
 }

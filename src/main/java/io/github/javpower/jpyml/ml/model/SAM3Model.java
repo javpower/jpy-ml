@@ -6,6 +6,8 @@ import io.github.javpower.jpyml.exception.InferenceException;
 import io.github.javpower.jpyml.exception.ModelException;
 import io.github.javpower.jpyml.ml.result.*;
 import jep.JepException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -33,6 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class SAM3Model implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(SAM3Model.class);
     private static final AtomicLong idCounter = new AtomicLong(0);
 
     private final long id;
@@ -180,11 +183,13 @@ public class SAM3Model implements AutoCloseable {
             closed = true;
             try {
                 engine.exec("if '" + varName + "' in _jpy_sam3_predictors: del _jpy_sam3_predictors['" + varName + "']");
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Error cleaning SAM3 predictor: {}", e.getMessage());
             }
             try {
                 engine.exec(varName + " = None");
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Error cleaning SAM3 variable: {}", e.getMessage());
             }
         }
     }

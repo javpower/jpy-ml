@@ -9,6 +9,7 @@ import io.github.javpower.jpyml.util.PythonEscape;
 import jep.JepException;
 
 import java.awt.*;
+import java.util.Locale;
 
 /**
  * Draws inference results onto images. Supports all task types.
@@ -82,7 +83,7 @@ public class ImageAnnotator {
                     if (i > 0) sb.append(", ");
                     ClassPrediction p = cr.getTopK().get(i);
                     sb.append("{'class_id': ").append(p.classId())
-                            .append(", 'confidence': ").append(p.confidence())
+                            .append(", 'confidence': ").append(f(p.confidence()))
                             .append(", 'class_name': '").append(PythonEscape.escape(p.className())).append("'}");
                 }
             }
@@ -114,9 +115,9 @@ public class ImageAnnotator {
 
     private String boxDict(ClassPrediction p) {
         BoundingBox b = p.box();
-        return "{'x1': " + b.x1() + ", 'y1': " + b.y1()
-                + ", 'x2': " + b.x2() + ", 'y2': " + b.y2()
-                + ", 'confidence': " + p.confidence()
+        return "{'x1': " + f(b.x1()) + ", 'y1': " + f(b.y1())
+                + ", 'x2': " + f(b.x2()) + ", 'y2': " + f(b.y2())
+                + ", 'confidence': " + f(p.confidence())
                 + ", 'class_id': " + p.classId()
                 + ", 'class_name': '" + PythonEscape.escape(p.className()) + "'}";
     }
@@ -129,7 +130,7 @@ public class ImageAnnotator {
         float[][] poly = m.getPolygon();
         for (int i = 0; i < poly.length; i++) {
             if (i > 0) sb.append(", ");
-            sb.append("[").append(poly[i][0]).append(", ").append(poly[i][1]).append("]");
+            sb.append("[").append(f(poly[i][0])).append(", ").append(f(poly[i][1])).append("]");
         }
         sb.append("]}");
         return sb.toString();
@@ -143,7 +144,7 @@ public class ImageAnnotator {
         for (int i = 0; i < kc.size(); i++) {
             if (i > 0) sb.append(", ");
             Keypoint k = kc.get(i);
-            sb.append("[").append(k.x()).append(", ").append(k.y()).append(", ").append(k.confidence()).append("]");
+            sb.append("[").append(f(k.x())).append(", ").append(f(k.y())).append(", ").append(f(k.confidence())).append("]");
         }
         sb.append("]}");
         return sb.toString();
@@ -151,13 +152,17 @@ public class ImageAnnotator {
 
     private String obbDict(OBBPrediction p) {
         RotatedBoundingBox rb = p.box();
-        return "{'cx': " + rb.centerX()
-                + ", 'cy': " + rb.centerY()
-                + ", 'w': " + rb.width()
-                + ", 'h': " + rb.height()
-                + ", 'angle': " + rb.angleDegrees()
-                + ", 'confidence': " + p.confidence()
+        return "{'cx': " + f(rb.centerX())
+                + ", 'cy': " + f(rb.centerY())
+                + ", 'w': " + f(rb.width())
+                + ", 'h': " + f(rb.height())
+                + ", 'angle': " + f(rb.angleDegrees())
+                + ", 'confidence': " + f(p.confidence())
                 + ", 'class_id': " + p.classId()
                 + ", 'class_name': '" + PythonEscape.escape(p.className()) + "'}";
+    }
+
+    private static String f(float val) {
+        return String.format(Locale.ROOT, "%s", val);
     }
 }

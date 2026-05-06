@@ -30,8 +30,6 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
@@ -54,11 +52,6 @@ public class Model implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Model.class);
     private static final AtomicLong idCounter = new AtomicLong(0);
-    private static final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "jpy-ml-async");
-        t.setDaemon(true);
-        return t;
-    });
 
     private final long id;
     private final String varName;
@@ -263,11 +256,14 @@ public class Model implements AutoCloseable {
     /**
      * Async prediction on an image file.
      * <p>
-     * Because Jep's SharedInterpreter is thread-bound, the prediction runs
-     * synchronously. Use {@code CompletableFuture.supplyAsync(() -> model.predict(...), yourExecutor)}
-     * with your own executor if you need to offload from the calling thread,
-     * but ensure all Model operations are serialized on the same thread that
-     * called {@code PythonRuntime.init()}.
+     * Because Jep's SharedInterpreter is thread-bound to the creating thread,
+     * the prediction executes synchronously on the calling thread and the result
+     * is wrapped in a completed CompletableFuture.
+     * <p>
+     * To offload to a background thread, use
+     * {@code CompletableFuture.supplyAsync(() -> model.predict(...), yourExecutor)}
+     * with your own executor, but ensure all Model operations are serialized
+     * on the same thread that called {@code PythonRuntime.init()}.
      */
     public CompletableFuture<InferenceResult> predictAsync(String imagePath) {
         ensureOpen();
@@ -353,13 +349,6 @@ public class Model implements AutoCloseable {
             log.warn("Video async prediction failed", e);
             return CompletableFuture.failedFuture(e);
         }
-    }
-
-    /**
-     * Shutdown the async executor. Call during application teardown.
-     */
-    public static void shutdownAsync() {
-        asyncExecutor.shutdown();
     }
 
     private InferenceResult predictClean(String imagePath, ModelConfig config) throws JepException {
@@ -1003,14 +992,15 @@ public class Model implements AutoCloseable {
             closed = true;
             log.info("Closing model: {}", modelPath);
             try {
-                // Clean up the model reference from Python _jpy_models dict
                 engine.exec("_jpy_cleanup('_jpy_m" + id + "')");
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Error cleaning model reference: {}", e.getMessage());
             }
             try {
                 engine.exec("_jpy_mv" + id + " = None");
                 engine.exec("_jpy_pr" + id + " = None");
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Error cleaning model variables: {}", e.getMessage());
             }
         }
     }

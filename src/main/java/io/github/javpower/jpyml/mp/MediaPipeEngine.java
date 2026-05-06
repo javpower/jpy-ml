@@ -173,7 +173,8 @@ public class MediaPipeEngine implements AutoCloseable {
             log.info("Closing MediaPipeEngine");
             try {
                 engine.exec("_jpy_mp_modules = None");
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Error cleaning MediaPipe modules: {}", e.getMessage());
             }
         }
     }

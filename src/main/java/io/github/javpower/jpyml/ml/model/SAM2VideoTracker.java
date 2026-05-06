@@ -5,6 +5,8 @@ import io.github.javpower.jpyml.exception.InferenceException;
 import io.github.javpower.jpyml.ml.result.Mask;
 import io.github.javpower.jpyml.ml.result.SAM2VideoResult;
 import jep.JepException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,6 +25,7 @@ import java.util.Map;
  */
 public class SAM2VideoTracker implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(SAM2VideoTracker.class);
     private final PythonEngine engine;
     private final String trackerVar;
     private boolean closed = false;
@@ -115,7 +118,8 @@ public class SAM2VideoTracker implements AutoCloseable {
             closed = true;
             try {
                 engine.exec(trackerVar + " = None");
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Error cleaning tracker variable: {}", e.getMessage());
             }
         }
     }
