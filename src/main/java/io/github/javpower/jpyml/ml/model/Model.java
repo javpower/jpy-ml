@@ -20,6 +20,7 @@ import io.github.javpower.jpyml.ml.validation.ValidationResult;
 import io.github.javpower.jpyml.util.PythonEscape;
 import jep.JepException;
 
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -240,8 +241,20 @@ public class Model implements AutoCloseable {
     }
 
     private static byte[] bufferedImageToBytes(BufferedImage image) throws IOException {
+        // Convert ARGB to RGB to avoid JPEG alpha issues
+        BufferedImage rgb = image;
+        if (image.getType() != BufferedImage.TYPE_INT_RGB) {
+            rgb = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = rgb.createGraphics();
+            g.setColor(java.awt.Color.WHITE);
+            g.fillRect(0, 0, rgb.getWidth(), rgb.getHeight());
+            g.drawImage(image, 0, 0, null);
+            g.dispose();
+        }
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(image, "jpg", baos);
+        if (!ImageIO.write(rgb, "jpg", baos)) {
+            throw new IOException("No JPEG image writer available");
+        }
         return baos.toByteArray();
     }
 
@@ -608,50 +621,67 @@ public class Model implements AutoCloseable {
         FloatBuffer confBuf = pool.acquireFloatBuffer(Math.max(boxCount, 1));
         IntBuffer clsBuf = pool.acquireIntBuffer(Math.max(boxCount, 1));
 
-        // Create DirectNDArray wrappers
-        jep.DirectNDArray<FloatBuffer> xyxyNd = new jep.DirectNDArray<>(xyxyBuf, boxCount * 4);
-        jep.DirectNDArray<FloatBuffer> confNd = new jep.DirectNDArray<>(confBuf, boxCount);
-        jep.DirectNDArray<IntBuffer> clsNd = new jep.DirectNDArray<>(clsBuf, boxCount);
+        try {
+            // Create DirectNDArray wrappers
+            jep.DirectNDArray<FloatBuffer> xyxyNd = new jep.DirectNDArray<>(xyxyBuf, boxCount * 4);
+            jep.DirectNDArray<FloatBuffer> confNd = new jep.DirectNDArray<>(confBuf, boxCount);
+            jep.DirectNDArray<IntBuffer> clsNd = new jep.DirectNDArray<>(clsBuf, boxCount);
 
-        // Pass buffers to Python
-        engine.put(rv + "_xyxy_buf", xyxyNd);
-        engine.put(rv + "_conf_buf", confNd);
-        engine.put(rv + "_cls_buf", clsNd);
+            // Pass buffers to Python
+            engine.put(rv + "_xyxy_buf", xyxyNd);
+            engine.put(rv + "_conf_buf", confNd);
+            engine.put(rv + "_cls_buf", clsNd);
 
-        // Extract result with zero-copy
-        engine.put(rv + "_task", taskType.getKey());
-        engine.exec(rv + " = jpy_extract_result_ndarray(" + rv + "_raw[0], " + rv + "_task, " +
-                "{'boxes_xyxy': " + rv + "_xyxy_buf, 'boxes_conf': " + rv + "_conf_buf, 'boxes_cls': " + rv + "_cls_buf})");
+            // Extract result with zero-copy
+            engine.put(rv + "_task", taskType.getKey());
+            engine.exec(rv + " = jpy_extract_result_ndarray(" + rv + "_raw[0], " + rv + "_task, " +
+                    "{'boxes_xyxy': " + rv + "_xyxy_buf, 'boxes_conf': " + rv + "_conf_buf, 'boxes_cls': " + rv + "_cls_buf})");
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> data = engine.eval(rv);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = engine.eval(rv);
 
-        // Parse common fields
-        String sourcePath = (String) data.getOrDefault("path", "");
-        List<Number> origShape = (List<Number>) data.get("orig_shape");
-        int origH = origShape != null && origShape.size() >= 1 ? origShape.get(0).intValue() : 0;
-        int origW = origShape != null && origShape.size() >= 2 ? origShape.get(1).intValue() : 0;
+            // Parse common fields
+            String sourcePath = (String) data.getOrDefault("path", "");
+            List<Number> origShape = (List<Number>) data.get("orig_shape");
+            int origH = origShape != null && origShape.size() >= 1 ? origShape.get(0).intValue() : 0;
+            int origW = origShape != null && origShape.size() >= 2 ? origShape.get(1).intValue() : 0;
 
-        Map<String, Object> speedData = (Map<String, Object>) data.get("speed");
-        InferenceSpeed speed = new InferenceSpeed(
-                floatVal(speedData, "preprocess"),
-                floatVal(speedData, "inference"),
-                floatVal(speedData, "postprocess")
-        );
+            Map<String, Object> speedData = (Map<String, Object>) data.get("speed");
+            InferenceSpeed speed = new InferenceSpeed(
+                    floatVal(speedData, "preprocess"),
+                    floatVal(speedData, "inference"),
+                    floatVal(speedData, "postprocess")
+            );
 
-        Map<Integer, String> names = new LinkedHashMap<>();
-        Object rawNames = data.get("names");
-        if (rawNames instanceof Map) {
-            ((Map<Object, Object>) rawNames).forEach((k, v) -> names.put(((Number) k).intValue(), String.valueOf(v)));
+            Map<Integer, String> names = new LinkedHashMap<>();
+            Object rawNames = data.get("names");
+            if (rawNames instanceof Map) {
+                ((Map<Object, Object>) rawNames).forEach((k, v) -> names.put(((Number) k).intValue(), String.valueOf(v)));
+            }
+
+            // Reset buffer limits for reading
+            xyxyBuf.limit(boxCount * 4);
+            confBuf.limit(boxCount);
+            clsBuf.limit(boxCount);
+
+            // Save references before nulling for finally block
+            FloatBuffer xyxyRef = xyxyBuf;
+            FloatBuffer confRef = confBuf;
+            IntBuffer clsRef = clsBuf;
+
+            // Ownership transferred to result — null out so finally won't release
+            xyxyBuf = null;
+            confBuf = null;
+            clsBuf = null;
+
+            return new RawDetectionResult(sourcePath, origW, origH, speed, names,
+                    xyxyRef, confRef, clsRef, boxCount);
+        } finally {
+            // Release buffers if ownership was not transferred (exception path)
+            pool.release(xyxyBuf);
+            pool.release(confBuf);
+            pool.release(clsBuf);
         }
-
-        // Reset buffer limits for reading
-        xyxyBuf.limit(boxCount * 4);
-        confBuf.limit(boxCount);
-        clsBuf.limit(boxCount);
-
-        return new RawDetectionResult(sourcePath, origW, origH, speed, names,
-                xyxyBuf, confBuf, clsBuf, boxCount);
     }
 
     // ==================== GPU Memory Management ====================
@@ -740,7 +770,7 @@ public class Model implements AutoCloseable {
 
     // ==================== Stream (webcam / RTSP / real-time) ====================
 
-    private volatile boolean streaming = false;
+    private final java.util.concurrent.atomic.AtomicBoolean streaming = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public void predictStream(int cameraIndex, Consumer<StreamFrame> frameConsumer) {
         predictStream(String.valueOf(cameraIndex), new ModelConfig(), true, frameConsumer);
@@ -764,7 +794,9 @@ public class Model implements AutoCloseable {
 
     public void predictStream(String source, ModelConfig config, boolean annotate, Consumer<StreamFrame> frameConsumer) {
         ensureOpen();
-        streaming = true;
+        if (!streaming.compareAndSet(false, true)) {
+            throw new IllegalStateException("Stream already active on this model instance");
+        }
         try {
             PythonScriptLoader.ensureLoaded(engine, "_jpy_streaming.py");
             String mv = "_jpy_mv" + id;
@@ -777,7 +809,7 @@ public class Model implements AutoCloseable {
 
             // Read frames one at a time for low latency
             engine.put(sv + "_task", taskType.getKey());
-            while (streaming) {
+            while (streaming.get()) {
                 engine.exec(sv + "_chunk = jpy_stream_next(" + sv + "_task" +
                         ", chunk_size=1, annotate=" + (annotate ? "True" : "False") + ")");
                 @SuppressWarnings("unchecked")
@@ -803,16 +835,16 @@ public class Model implements AutoCloseable {
         } catch (JepException e) {
             throw new InferenceException("Stream prediction failed: " + source, e);
         } finally {
-            streaming = false;
+            streaming.set(false);
         }
     }
 
     public void stopStream() {
-        streaming = false;
+        streaming.set(false);
     }
 
     public boolean isStreaming() {
-        return streaming;
+        return streaming.get();
     }
 
     // ==================== Training ====================

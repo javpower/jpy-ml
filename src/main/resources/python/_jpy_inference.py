@@ -1,22 +1,17 @@
 """Inference helper functions for jpy-ml."""
 from ultralytics import YOLO, RTDETR, SAM
 import numpy as np
-import torch
 
 def jpy_load_model(model_path, task=None):
     """Load a model. If task is specified, force that task type regardless of filename."""
     global _jpy_model_counter
     var_name = f"_jpy_m{_jpy_model_counter}"
-    _jpy_model_counter += 1
 
     if task is not None:
-        # Explicit task: use YOLO which supports all task types
         model = YOLO(model_path)
-        # Override task if model's auto-detection disagrees
         if hasattr(model, 'task') and model.task != task:
             model.task = task
     else:
-        # Auto-detect from filename
         path_lower = model_path.lower()
         if "rtdetr" in path_lower:
             model = RTDETR(model_path)
@@ -25,6 +20,7 @@ def jpy_load_model(model_path, task=None):
         else:
             model = YOLO(model_path)
 
+    _jpy_model_counter += 1
     _jpy_models[var_name] = model
     task_type = task if task is not None else (getattr(model, 'task', 'detect') or 'detect')
     names = dict(model.names) if hasattr(model, 'names') and model.names else {}
@@ -37,6 +33,8 @@ def jpy_load_model(model_path, task=None):
 
 def jpy_predict(var_name, source, **kwargs):
     """Run prediction. Returns raw results list."""
+    if var_name not in _jpy_models:
+        raise KeyError(f"Model '{var_name}' not found. Was it loaded?")
     model = _jpy_models[var_name]
     return model(source, **kwargs)
 
@@ -57,13 +55,16 @@ def jpy_extract_result(result, task_type):
     # Boxes (common to detect, segment, pose, obb)
     if result.boxes is not None:
         boxes = result.boxes
+        xyxy_all = boxes.xyxy.cpu().numpy()
+        conf_all = boxes.conf.cpu().numpy()
+        cls_all = boxes.cls.cpu().numpy()
         data['boxes'] = []
         for i in range(len(boxes)):
-            xyxy = boxes.xyxy[i].cpu().tolist()
             data['boxes'].append({
-                'x1': xyxy[0], 'y1': xyxy[1], 'x2': xyxy[2], 'y2': xyxy[3],
-                'confidence': float(boxes.conf[i].cpu()),
-                'class_id': int(boxes.cls[i].cpu()),
+                'x1': float(xyxy_all[i, 0]), 'y1': float(xyxy_all[i, 1]),
+                'x2': float(xyxy_all[i, 2]), 'y2': float(xyxy_all[i, 3]),
+                'confidence': float(conf_all[i]),
+                'class_id': int(cls_all[i]),
             })
 
     # Masks (segmentation)
@@ -77,9 +78,11 @@ def jpy_extract_result(result, task_type):
     if result.keypoints is not None:
         data['keypoints'] = []
         kpts = result.keypoints
+        xy_all = kpts.xy.cpu().numpy()
+        conf_all = kpts.conf.cpu().numpy() if kpts.conf is not None else None
         for i in range(len(kpts)):
-            xy = kpts.xy[i].cpu().tolist()
-            conf = kpts.conf[i].cpu().tolist() if kpts.conf is not None else [1.0] * len(xy)
+            xy = xy_all[i].tolist()
+            conf = conf_all[i].tolist() if conf_all is not None else [1.0] * len(xy)
             data['keypoints'].append({'xy': xy, 'conf': conf})
 
     # Classification (probs)
@@ -96,13 +99,16 @@ def jpy_extract_result(result, task_type):
     if result.obb is not None:
         data['obb'] = []
         obb = result.obb
+        xywhr_all = obb.xywhr.cpu().numpy()
+        conf_all = obb.conf.cpu().numpy()
+        cls_all = obb.cls.cpu().numpy()
         for i in range(len(obb)):
-            xywhr = obb.xywhr[i].cpu().tolist()
             data['obb'].append({
-                'cx': xywhr[0], 'cy': xywhr[1], 'w': xywhr[2], 'h': xywhr[3],
-                'angle': xywhr[4],
-                'confidence': float(obb.conf[i].cpu()),
-                'class_id': int(obb.cls[i].cpu()),
+                'cx': float(xywhr_all[i, 0]), 'cy': float(xywhr_all[i, 1]),
+                'w': float(xywhr_all[i, 2]), 'h': float(xywhr_all[i, 3]),
+                'angle': float(xywhr_all[i, 4]),
+                'confidence': float(conf_all[i]),
+                'class_id': int(cls_all[i]),
             })
 
     return data
@@ -113,6 +119,8 @@ def jpy_batch_extract(results, task_type):
 
 def jpy_batch_predict(var_name, sources, task_type, kwargs):
     """Run prediction on multiple images. Returns list of extracted result dicts."""
+    if var_name not in _jpy_models:
+        raise KeyError(f"Model '{var_name}' not found. Was it loaded?")
     model = _jpy_models[var_name]
     results = []
     for src in sources:
@@ -135,19 +143,24 @@ def jpy_model_info(var_name):
     return info
 
 def jpy_cleanup(var_name):
-    """Remove model from cache."""
+    """Remove model from cache and release GPU memory."""
     if var_name in _jpy_models:
         del _jpy_models[var_name]
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 def jpy_annotate(result, output_path=None):
     """Get annotated image. If output_path given, save to file."""
+    import cv2
     annotated = result.plot()
     if output_path:
-        import cv2
         cv2.imwrite(output_path, annotated)
         return output_path
     else:
-        import cv2
         _, buf = cv2.imencode('.png', annotated)
         return buf.tobytes()
 
@@ -188,26 +201,23 @@ def jpy_extract_result_ndarray(result, task_type, buffers=None):
             buf_conf = buffers['boxes_conf']
             buf_cls = buffers['boxes_cls']
 
-            # Get numpy arrays (shared memory with CPU tensor)
+            # Get numpy arrays
             xyxy_np = boxes.xyxy.cpu().numpy().astype(np.float32)
             conf_np = boxes.conf.cpu().numpy().astype(np.float32)
             cls_np = boxes.cls.cpu().numpy().astype(np.int32)
 
-            # Get the underlying Java buffers
+            # Get the underlying Java buffers and copy data directly
             xyxy_buf = buf_xyxy.getData()
             conf_buf = buf_conf.getData()
             cls_buf = buf_cls.getData()
 
-            # Write data to buffers using struct bulk copy
-            import struct
             xyxy_bytes = xyxy_np.tobytes()
             conf_bytes = conf_np.tobytes()
             cls_bytes = cls_np.tobytes()
 
-            # Bulk write: pack as float/int arrays directly into buffer
-            struct.pack_into(f'<{len(xyxy_np.flat)}f', xyxy_buf, 0, *xyxy_np.flat)
-            struct.pack_into(f'<{len(conf_np)}f', conf_buf, 0, *conf_np)
-            struct.pack_into(f'<{len(cls_np)}i', cls_buf, 0, *cls_np)
+            xyxy_buf[:len(xyxy_bytes)] = xyxy_bytes
+            conf_buf[:len(conf_bytes)] = conf_bytes
+            cls_buf[:len(cls_bytes)] = cls_bytes
 
             data['boxes_count'] = n
             data['boxes_ndarray'] = True
@@ -231,7 +241,7 @@ def jpy_extract_result_ndarray(result, task_type, buffers=None):
             points = mask.tolist()
             all_points.extend(points)
             all_sizes.append(len(points))
-        data['masks_points'] = NDArray([p for points in all_points for p in points])
+        data['masks_points'] = NDArray(all_points)
         data['masks_sizes'] = all_sizes
 
     # Keypoints (pose)
@@ -277,9 +287,13 @@ def jpy_decode_image(raw_bytes):
 
     Returns:
         numpy ndarray (H, W, 3) in BGR format
+
+    Raises:
+        ValueError: if the image cannot be decoded
     """
     import cv2
-    # Jep converts Java byte[] (signed -128..127) to PyJArray
-    # Use numpy to handle the conversion correctly
     arr = np.array(raw_bytes, dtype=np.int8).astype(np.uint8)
-    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Failed to decode image from raw bytes")
+    return img

@@ -6,6 +6,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Pool of DirectByteBuffer instances for zero-copy data transfer between Python and Java.
@@ -32,6 +33,8 @@ public class TensorBufferPool {
 
     private final Queue<FloatBuffer> floatPool = new ConcurrentLinkedQueue<>();
     private final Queue<IntBuffer> intPool = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger floatPoolSize = new AtomicInteger(0);
+    private final AtomicInteger intPoolSize = new AtomicInteger(0);
 
     private static final TensorBufferPool INSTANCE = new TensorBufferPool();
 
@@ -53,14 +56,17 @@ public class TensorBufferPool {
         FloatBuffer best = null;
         FloatBuffer buf = floatPool.poll();
         while (buf != null) {
+            floatPoolSize.decrementAndGet();
             if (buf.capacity() >= minCapacity) {
                 if (best == null || buf.capacity() < best.capacity()) {
                     if (best != null) {
                         floatPool.offer(best);
+                        floatPoolSize.incrementAndGet();
                     }
                     best = buf;
                 } else {
                     floatPool.offer(buf);
+                    floatPoolSize.incrementAndGet();
                 }
             }
             // too-small buffers are discarded (DirectByteBuffer cannot be freed explicitly)
@@ -91,14 +97,17 @@ public class TensorBufferPool {
         IntBuffer best = null;
         IntBuffer buf = intPool.poll();
         while (buf != null) {
+            intPoolSize.decrementAndGet();
             if (buf.capacity() >= minCapacity) {
                 if (best == null || buf.capacity() < best.capacity()) {
                     if (best != null) {
                         intPool.offer(best);
+                        intPoolSize.incrementAndGet();
                     }
                     best = buf;
                 } else {
                     intPool.offer(buf);
+                    intPoolSize.incrementAndGet();
                 }
             }
             // too-small buffers are discarded (DirectByteBuffer cannot be freed explicitly)
@@ -124,8 +133,9 @@ public class TensorBufferPool {
      * @param buf the buffer to release, may be null
      */
     public void release(FloatBuffer buf) {
-        if (buf != null && floatPool.size() < MAX_POOL_SIZE) {
+        if (buf != null && floatPoolSize.get() < MAX_POOL_SIZE) {
             floatPool.offer(buf);
+            floatPoolSize.incrementAndGet();
         }
     }
 
@@ -135,8 +145,9 @@ public class TensorBufferPool {
      * @param buf the buffer to release, may be null
      */
     public void release(IntBuffer buf) {
-        if (buf != null && intPool.size() < MAX_POOL_SIZE) {
+        if (buf != null && intPoolSize.get() < MAX_POOL_SIZE) {
             intPool.offer(buf);
+            intPoolSize.incrementAndGet();
         }
     }
 
@@ -146,19 +157,21 @@ public class TensorBufferPool {
     public void clear() {
         floatPool.clear();
         intPool.clear();
+        floatPoolSize.set(0);
+        intPoolSize.set(0);
     }
 
     /**
      * Get the number of FloatBuffers currently in the pool.
      */
     public int getFloatPoolSize() {
-        return floatPool.size();
+        return floatPoolSize.get();
     }
 
     /**
      * Get the number of IntBuffers currently in the pool.
      */
     public int getIntPoolSize() {
-        return intPool.size();
+        return intPoolSize.get();
     }
 }

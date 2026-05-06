@@ -8,6 +8,8 @@ _jpy_stream_frame_index = 0
 def jpy_stream_start(model_obj, source, kwargs):
     """Start streaming prediction. model_obj is the Ultralytics model object."""
     global _jpy_stream_results, _jpy_stream_exhausted, _jpy_stream_frame_index
+    # Clean up any previous stream first
+    jpy_stream_cleanup()
     _jpy_stream_exhausted = False
     _jpy_stream_frame_index = 0
     _jpy_stream_results = model_obj(source, stream=True, **kwargs)
@@ -37,7 +39,7 @@ def jpy_stream_next(task_type, chunk_size=10, annotate=False):
             }
             if annotate:
                 import cv2
-                annotated = r.plot()  # numpy BGR image
+                annotated = r.plot()
                 _, buf = cv2.imencode('.jpg', annotated)
                 entry['image'] = buf.tobytes()
             _jpy_stream_frame_index += 1
@@ -46,6 +48,10 @@ def jpy_stream_next(task_type, chunk_size=10, annotate=False):
                 break
     except StopIteration:
         pass
+    except Exception:
+        # On error, mark exhausted so the stream stops cleanly
+        _jpy_stream_exhausted = True
+        raise
     if len(chunk) < chunk_size:
         _jpy_stream_exhausted = True
     return chunk
@@ -54,6 +60,11 @@ def jpy_stream_next(task_type, chunk_size=10, annotate=False):
 def jpy_stream_cleanup():
     """Clean up streaming state."""
     global _jpy_stream_results, _jpy_stream_exhausted, _jpy_stream_frame_index
+    if _jpy_stream_results is not None:
+        try:
+            _jpy_stream_results.close()
+        except Exception:
+            pass
     _jpy_stream_results = None
     _jpy_stream_exhausted = False
     _jpy_stream_frame_index = 0

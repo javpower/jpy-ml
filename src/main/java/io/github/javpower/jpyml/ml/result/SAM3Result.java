@@ -23,6 +23,14 @@ public record SAM3Result(
         List<Integer> classIds
 ) {
     public SAM3Result {
+        if (masks.size() != scores.size()) {
+            throw new IllegalArgumentException(
+                    "masks and scores must have same size: " + masks.size() + " vs " + scores.size());
+        }
+        if (masks.size() != classIds.size()) {
+            throw new IllegalArgumentException(
+                    "masks and classIds must have same size: " + masks.size() + " vs " + classIds.size());
+        }
         masks = Collections.unmodifiableList(masks);
         scores = Collections.unmodifiableList(scores);
         classIds = Collections.unmodifiableList(classIds);

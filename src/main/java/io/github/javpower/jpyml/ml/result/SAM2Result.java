@@ -20,6 +20,10 @@ public record SAM2Result(
         List<Float> scores
 ) {
     public SAM2Result {
+        if (masks.size() != scores.size()) {
+            throw new IllegalArgumentException(
+                    "masks and scores must have same size: " + masks.size() + " vs " + scores.size());
+        }
         masks = Collections.unmodifiableList(masks);
         scores = Collections.unmodifiableList(scores);
     }

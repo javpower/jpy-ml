@@ -21,7 +21,7 @@ public class ImageAnnotator {
     };
 
     private final PythonEngine engine;
-    private boolean scriptsLoaded = false;
+    private volatile boolean scriptsLoaded = false;
 
     public ImageAnnotator() throws JepException {
         this.engine = PythonEngine.getInstance();

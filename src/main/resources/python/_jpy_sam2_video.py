@@ -52,49 +52,50 @@ def jpy_sam2_video_propagate(tracker):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_results = []
 
-    frame_idx = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    try:
+        frame_idx = 0
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        # Merge initial prompts with frame-specific prompts
-        points = list(tracker['points'])
-        boxes = list(tracker['boxes'])
-        labels = list(tracker['labels'])
+            # Merge initial prompts with frame-specific prompts
+            points = list(tracker['points'])
+            boxes = list(tracker['boxes'])
+            labels = list(tracker['labels'])
 
-        if frame_idx in tracker['frame_prompts']:
-            for p in tracker['frame_prompts'][frame_idx]:
-                if p['type'] == 'point':
-                    points.append([p['x'], p['y']])
-                    labels.append(p.get('label', 1))
-                elif p['type'] == 'box':
-                    boxes.append([p['x1'], p['y1'], p['x2'], p['y2']])
+            if frame_idx in tracker['frame_prompts']:
+                for p in tracker['frame_prompts'][frame_idx]:
+                    if p['type'] == 'point':
+                        points.append([p['x'], p['y']])
+                        labels.append(p.get('label', 1))
+                    elif p['type'] == 'box':
+                        boxes.append([p['x1'], p['y1'], p['x2'], p['y2']])
 
-        # Build kwargs — only include non-empty lists
-        kwargs = {}
-        if points:
-            # Convert to float numpy arrays for reliable type handling
-            kwargs['points'] = np.array(points, dtype=np.float32)
-            kwargs['labels'] = np.array(labels, dtype=np.int32)
-        if boxes:
-            kwargs['bboxes'] = np.array(boxes, dtype=np.float32)
+            # Build kwargs — only include non-empty lists
+            kwargs = {}
+            if points:
+                kwargs['points'] = np.array(points, dtype=np.float32)
+                kwargs['labels'] = np.array(labels, dtype=np.int32)
+            if boxes:
+                kwargs['bboxes'] = np.array(boxes, dtype=np.float32)
 
-        results = model(frame, **kwargs)
+            results = model(frame, **kwargs)
 
-        if results and results[0].masks is not None:
-            for i in range(len(results[0].masks)):
-                polygon = results[0].masks.xy[i].tolist() if hasattr(results[0].masks, 'xy') else []
-                score = float(results[0].boxes.conf[i].cpu()) if results[0].boxes is not None else 1.0
-                frame_results.append({
-                    'frame_index': frame_idx,
-                    'polygon': polygon,
-                    'score': score,
-                })
+            if results and results[0].masks is not None:
+                conf_all = results[0].boxes.conf.cpu().numpy() if results[0].boxes is not None else None
+                for i in range(len(results[0].masks)):
+                    polygon = results[0].masks.xy[i].tolist() if hasattr(results[0].masks, 'xy') else []
+                    score = float(conf_all[i]) if conf_all is not None else 1.0
+                    frame_results.append({
+                        'frame_index': frame_idx,
+                        'polygon': polygon,
+                        'score': score,
+                    })
 
-        frame_idx += 1
-
-    cap.release()
+            frame_idx += 1
+    finally:
+        cap.release()
 
     return {
         'total_frames': total_frames,

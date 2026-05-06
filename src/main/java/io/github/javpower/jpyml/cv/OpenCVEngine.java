@@ -27,7 +27,7 @@ public class OpenCVEngine implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(OpenCVEngine.class);
     private final PythonEngine engine;
-    private boolean scriptsLoaded = false;
+    private volatile boolean scriptsLoaded = false;
     private boolean closed = false;
 
     public OpenCVEngine() throws JepException {

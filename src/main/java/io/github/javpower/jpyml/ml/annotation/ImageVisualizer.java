@@ -280,11 +280,15 @@ public class ImageVisualizer {
 
     private static Color classColor(int index) {
         int rgb = CLASS_COLORS[index % CLASS_COLORS.length];
-        return new Color(rgb, true);
+        return new Color(rgb | 0xFF000000, true);
     }
 
     private static BufferedImage deepCopy(BufferedImage src) {
-        BufferedImage copy = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
+        int type = src.getType();
+        if (type == BufferedImage.TYPE_CUSTOM || type == 0) {
+            type = src.getColorModel().hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB;
+        }
+        BufferedImage copy = new BufferedImage(src.getWidth(), src.getHeight(), type);
         Graphics2D g = copy.createGraphics();
         g.drawImage(src, 0, 0, null);
         g.dispose();

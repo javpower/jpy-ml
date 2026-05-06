@@ -11,9 +11,9 @@ public class KeypointCollection {
     public Keypoint get(int index) { return keypoints.get(index); }
     public List<Keypoint> getAll() { return keypoints; }
     public int size() { return keypoints.size(); }
-    public Keypoint getNose() { return keypoints.get(0); }
-    public Keypoint getLeftEye() { return keypoints.get(1); }
-    public Keypoint getRightEye() { return keypoints.get(2); }
+    public Keypoint getNose() { return keypoints.size() > 0 ? keypoints.get(0) : null; }
+    public Keypoint getLeftEye() { return keypoints.size() > 1 ? keypoints.get(1) : null; }
+    public Keypoint getRightEye() { return keypoints.size() > 2 ? keypoints.get(2) : null; }
     public float averageConfidence() {
         return (float) keypoints.stream().mapToDouble(Keypoint::confidence).average().orElse(0);
     }

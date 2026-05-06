@@ -46,7 +46,13 @@ public final class ResultSerializer {
         }
 
         switch (result.getTaskType()) {
-            case DETECT -> m.put("boxes", boxList(((DetectionResult) result).getBoxes()));
+            case DETECT -> {
+                if (result instanceof DetectionResult dr) {
+                    m.put("boxes", boxList(dr.getBoxes()));
+                } else if (result instanceof RawDetectionResult raw) {
+                    m.put("box_count", raw.getBoxCount());
+                }
+            }
             case SEGMENT -> {
                 SegmentationResult sr = (SegmentationResult) result;
                 m.put("boxes", boxList(sr.getBoxes()));
@@ -199,7 +205,10 @@ public final class ResultSerializer {
                 case '\n' -> sb.append("\\n");
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
-                default -> sb.append(c);
+                default -> {
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+                }
             }
         }
         return sb.append('"').toString();

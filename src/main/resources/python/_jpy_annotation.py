@@ -22,8 +22,9 @@ def jpy_annotate(input_path, output_path, boxes, task):
         from PIL import Image, ImageDraw, ImageFont
         import math
 
-        img = Image.open(input_path).convert("RGB")
-        draw = ImageDraw.Draw(img)
+        img = Image.open(input_path).convert("RGBA")
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
 
         # Try to get a font, fall back to default
         try:
@@ -81,6 +82,7 @@ def jpy_annotate(input_path, output_path, boxes, task):
                 label = f"{box.get('class_name', '?')} {box.get('confidence', 0):.2f}"
                 draw.text((cx, cy - 16), label, fill=color, font=font)
 
+        img = Image.alpha_composite(img, overlay).convert("RGB")
         img.save(output_path)
         return output_path
     except Exception as e:

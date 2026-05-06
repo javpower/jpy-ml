@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.*;
 import java.util.*;
@@ -24,10 +25,10 @@ public class PythonRuntime {
     private static final String PYTHON_VERSION = "3.13.3";
     private static final String PYTHON_RELEASE_TAG = "20250317";
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
-    private static Path runtimeRoot;
-    private static Path pythonHome;
-    private static Path jepNativeLib;
-    private static Path sitePackagesPath;
+    private static volatile Path runtimeRoot;
+    private static volatile Path pythonHome;
+    private static volatile Path jepNativeLib;
+    private static volatile Path sitePackagesPath;
 
     private PythonRuntime() {
     }
@@ -205,6 +206,9 @@ public class PythonRuntime {
         } catch (Exception ignored) {
         }
         initialized.set(false);
+        pythonHome = null;
+        jepNativeLib = null;
+        sitePackagesPath = null;
         log.info("PythonRuntime shut down");
     }
 
@@ -242,7 +246,10 @@ public class PythonRuntime {
                     pythonExe.toString(), "-c", "import " + packageName
             ).redirectErrorStream(true);
             Process p = pb.start();
-            p.getOutputStream().close();
+            // Drain stdout/stderr to prevent pipe buffer deadlock
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                while (reader.readLine() != null) { /* drain */ }
+            }
             int exit = p.waitFor();
             return exit == 0;
         } catch (Exception e) {
@@ -444,11 +451,13 @@ public class PythonRuntime {
     }
 
     private static void downloadFile(String url, Path target) throws IOException {
-        var connection = new URL(url).openConnection();
+        var connection = (HttpURLConnection) new URL(url).openConnection();
+        connection.setConnectTimeout(30_000);
+        connection.setReadTimeout(300_000);
         int totalSize = connection.getContentLength();
         try (InputStream in = connection.getInputStream();
              OutputStream out = Files.newOutputStream(target)) {
-            byte[] buf = new byte[8192];
+            byte[] buf = new byte[65536];
             long downloaded = 0;
             int lastPercent = -1;
             int n;
@@ -484,6 +493,9 @@ public class PythonRuntime {
 
         try {
             Process p = pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                while (reader.readLine() != null) { /* drain */ }
+            }
             int exit = p.waitFor();
             if (exit != 0) {
                 throw new IOException("tar extraction failed (exit code " + exit + ")");
@@ -517,6 +529,9 @@ public class PythonRuntime {
 
         try {
             Process p = pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                while (reader.readLine() != null) { /* drain */ }
+            }
             int exit = p.waitFor();
             if (exit != 0) {
                 throw new IOException("unzip failed (exit code " + exit + ")");
