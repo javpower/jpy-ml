@@ -19,7 +19,7 @@ class OpenCVEngineTest {
     static void init() throws Exception {
         Path projectRoot = Path.of(System.getProperty("user.dir"));
         Path pythonBin = projectRoot.resolve(".venv/bin/python3");
-        Path jepLib = projectRoot.resolve(".venv/lib/python3.13/site-packages/jep/libjep.jnilib");
+        Path jepLib = projectRoot.resolve(".venv/lib/python3.12/site-packages/jep/libjep.jnilib");
         Assumptions.assumeTrue(Files.exists(pythonBin), "Python venv not found");
         Assumptions.assumeTrue(Files.exists(jepLib), "Jep native lib not found");
         PythonRuntime.init(pythonBin, jepLib);

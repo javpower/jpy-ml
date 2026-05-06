@@ -26,7 +26,7 @@ public class QuickVerifyTest {
     @BeforeAll
     static void setup() throws Exception {
         Path pythonExe = Paths.get(".venv/bin/python3");
-        Path jepLib = Paths.get(".venv/lib/python3.13/site-packages/jep/libjep.jnilib");
+        Path jepLib = Paths.get(".venv/lib/python3.12/site-packages/jep/libjep.jnilib");
 
         Path projectRoot = Paths.get(System.getProperty("user.dir"));
         if (!pythonExe.isAbsolute()) {

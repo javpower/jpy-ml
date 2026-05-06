@@ -29,7 +29,7 @@ class NewFeaturesTest {
     @BeforeAll
     static void init() throws Exception {
         Path pythonBin = PROJECT_ROOT.resolve(".venv/bin/python3");
-        Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.13/site-packages/jep/libjep.jnilib");
+        Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.12/site-packages/jep/libjep.jnilib");
         Assumptions.assumeTrue(Files.exists(pythonBin), "Python venv not found");
         Assumptions.assumeTrue(Files.exists(jepLib), "Jep native lib not found");
         PythonRuntime.init(pythonBin, jepLib);

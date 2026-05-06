@@ -22,7 +22,7 @@ public class PythonRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(PythonRuntime.class);
     private static final String RUNTIME_DIR_NAME = ".jpy-ml";
-    private static final String PYTHON_VERSION = "3.13.3";
+    private static final String PYTHON_VERSION = "3.12.9";
     private static final String PYTHON_RELEASE_TAG = "20250317";
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
     private static volatile Path runtimeRoot;
@@ -290,11 +290,11 @@ public class PythonRuntime {
      */
     private static void configureEnvironment() {
         // Force GIL on for Python 3.13+ (free-threaded build compatibility with PyTorch/JEP)
+        // Not needed for Python 3.12.x, but kept for forward compatibility if users upgrade
         String gilOverride = System.getProperty("jpy.python.gil");
         if ("0".equals(gilOverride) || "false".equals(gilOverride)) {
             log.info("PYTHON_GIL override disabled via jpy.python.gil={}", gilOverride);
         } else if (System.getenv("PYTHON_GIL") == null) {
-            log.info("Setting PYTHON_GIL=1 for Python 3.13+ / PyTorch/JEP compatibility");
             setEnv("PYTHON_GIL", "1");
         }
 
@@ -505,7 +505,7 @@ public class PythonRuntime {
     }
 
     private static String buildDownloadUrl(String platformKey) {
-        String baseUrl = "https://github.com/indygreg/python-build-standalone/releases/download/";
+        String baseUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/";
         String releaseTag = PYTHON_RELEASE_TAG;
         String fileName = "cpython-" + PYTHON_VERSION + "+" + PYTHON_RELEASE_TAG;
 

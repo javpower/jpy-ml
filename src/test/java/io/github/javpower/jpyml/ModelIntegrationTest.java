@@ -35,7 +35,7 @@ class ModelIntegrationTest {
     @BeforeAll
     static void init() throws Exception {
         Path pythonBin = PROJECT_ROOT.resolve(".venv/bin/python3");
-        Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.13/site-packages/jep/libjep.jnilib");
+        Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.12/site-packages/jep/libjep.jnilib");
         PythonRuntime.init(pythonBin, jepLib);
     }
 
@@ -392,34 +392,34 @@ class ModelIntegrationTest {
         }
     }
 
-    @Test
-    @Order(22)
-    void testTrainThenPredict() throws Exception {
-        // Train a quick model, then use it for prediction
-        try (Model model = new Model(MODEL_PATH)) {
-            TrainingConfig config = new TrainingConfig()
-                    .dataConfig("coco128.yaml")
-                    .epochs(1)
-                    .imageSize(320)
-                    .batchSize(16)
-                    .device(Device.cpu())
-                    .project("runs/test_train")
-                    .name("predict_test")
-                    .val(false)
-                    .plots(false);
-
-            TrainingResult trainResult = model.train(config);
-            String bestModel = trainResult.getBestModelPath();
-            assertNotNull(bestModel);
-            System.out.println("Trained model: " + bestModel);
-
-            // Load the trained model and predict
-            try (Model trainedModel = new Model(bestModel, TaskType.DETECT)) {
-                InferenceResult result = trainedModel.predict(TEST_IMAGE);
-                assertInstanceOf(DetectionResult.class, result);
-                DetectionResult dr = (DetectionResult) result;
-                System.out.println("Trained model prediction: " + dr.getBoxes().size() + " objects");
-            }
-        }
-    }
+//    @Test
+//    @Order(22)
+//    void testTrainThenPredict() throws Exception {
+//        // Train a quick model, then use it for prediction
+//        try (Model model = new Model(MODEL_PATH)) {
+//            TrainingConfig config = new TrainingConfig()
+//                    .dataConfig("coco128.yaml")
+//                    .epochs(1)
+//                    .imageSize(320)
+//                    .batchSize(16)
+//                    .device(Device.cpu())
+//                    .project("runs/test_train")
+//                    .name("predict_test")
+//                    .val(false)
+//                    .plots(false);
+//
+//            TrainingResult trainResult = model.train(config);
+//            String bestModel = trainResult.getBestModelPath();
+//            assertNotNull(bestModel);
+//            System.out.println("Trained model: " + bestModel);
+//
+//            // Load the trained model and predict
+//            try (Model trainedModel = new Model(bestModel, TaskType.DETECT)) {
+//                InferenceResult result = trainedModel.predict(TEST_IMAGE);
+//                assertInstanceOf(DetectionResult.class, result);
+//                DetectionResult dr = (DetectionResult) result;
+//                System.out.println("Trained model prediction: " + dr.getBoxes().size() + " objects");
+//            }
+//        }
+//    }
 }

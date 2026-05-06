@@ -31,7 +31,7 @@
 //    @BeforeAll
 //    static void init() throws Exception {
 //        Path pythonBin = PROJECT_ROOT.resolve(".venv/bin/python3");
-//        Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.13/site-packages/jep/libjep.jnilib");
+//        Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.12/site-packages/jep/libjep.jnilib");
 //        PythonRuntime.init(pythonBin, jepLib);
 //    }
 //    @Test
