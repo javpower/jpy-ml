@@ -22,17 +22,43 @@ def _on_epoch_end(trainer):
     if hasattr(trainer, 'best_fitness') and trainer.best_fitness is not None:
         entry['fitness'] = float(trainer.best_fitness)
     _jpy_epoch_log.append(entry)
+    # Real-time progress write for Java callback
+    jpy_progress_write('epoch', entry)
+    # Check for cancellation signal
+    if jpy_progress_check_cancel():
+        trainer.early_stopping = True
+        if hasattr(trainer, 'stop'):
+            trainer.stop = True
 
-def jpy_train(model_path, kwargs, enable_logging=False):
-    """Run training and return result dict. If enable_logging=True, collect epoch metrics."""
+def jpy_train(model_path, kwargs, enable_logging=False, progress_file=None, cancel_file=None):
+    """Run training and return result dict.
+
+    Args:
+        model_path: Path to YOLO model (.pt file).
+        kwargs: Training hyperparameters as dict.
+        enable_logging: If True, collect epoch metrics.
+        progress_file: Path to JSONL progress file for real-time callbacks.
+        cancel_file: Path to cancel signal file.
+    """
     global _jpy_epoch_log
     _jpy_epoch_log = []
+
+    if progress_file:
+        jpy_progress_init(progress_file, cancel_file)
 
     model = YOLO(model_path)
     if enable_logging:
         model.add_callback("on_fit_epoch_end", _on_epoch_end)
 
-    model.train(**kwargs)
+    error_msg = None
+    try:
+        model.train(**kwargs)
+    except Exception as e:
+        error_msg = str(e)
+        raise
+    finally:
+        if progress_file:
+            jpy_progress_done(error_msg)
 
     trainer = model.trainer
     result = {

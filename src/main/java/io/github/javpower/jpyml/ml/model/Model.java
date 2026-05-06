@@ -20,16 +20,21 @@ import io.github.javpower.jpyml.ml.validation.ValidationResult;
 import io.github.javpower.jpyml.util.PythonEscape;
 import jep.JepException;
 
+import io.github.javpower.jpyml.ml.training.ProgressMonitor;
+
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
@@ -61,6 +66,17 @@ public class Model implements AutoCloseable {
     private final ModelInfo modelInfo;
     private final PythonEngine engine;
     private boolean closed = false;
+
+    // Training state for cancellation and real-time progress
+    private static final ExecutorService trainingExecutor =
+            Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "jpy-training-executor");
+                t.setDaemon(true);
+                return t;
+            });
+    private volatile Path currentCancelFile;
+    private volatile Path currentProgressFile;
+    private volatile ProgressMonitor currentMonitor;
 
     public Model(String modelPath) throws ModelException {
         this(modelPath, null);
@@ -839,49 +855,149 @@ public class Model implements AutoCloseable {
     // ==================== Training ====================
 
     public TrainingResult train(TrainingConfig config) throws TrainingException {
-        return train(config, null);
+        return trainInternal(config, null);
     }
 
     public TrainingResult train(TrainingConfig config, TrainingCallback callback) throws TrainingException {
+        return trainInternal(config, callback);
+    }
+
+    /**
+     * Train the model asynchronously with real-time callback.
+     * Returns a CompletableFuture that completes when training finishes.
+     * The callback fires on a background monitor thread as each epoch completes.
+     * <p>
+     * No other Model operations (predict, validate, etc.) can run until
+     * training completes or is cancelled via stopTraining().
+     */
+    public CompletableFuture<TrainingResult> trainAsync(TrainingConfig config, TrainingCallback callback) {
+        ensureOpen();
+        if (config.getDataConfig() == null) {
+            throw new TrainingException("dataConfig is required");
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return trainInternal(config, callback);
+            } catch (TrainingException e) {
+                throw new CompletionException(e);
+            }
+        }, trainingExecutor);
+    }
+
+    /**
+     * Request cancellation of an ongoing training session.
+     * Training will stop after the current epoch completes.
+     */
+    public void stopTraining() {
+        Path cancel = currentCancelFile;
+        if (cancel != null) {
+            try {
+                Files.writeString(cancel, "cancel");
+                log.info("Training cancellation requested");
+            } catch (IOException e) {
+                log.warn("Failed to write cancel signal: {}", e.getMessage());
+            }
+        }
+        ProgressMonitor monitor = currentMonitor;
+        if (monitor != null) {
+            monitor.stop();
+        }
+    }
+
+    private TrainingResult trainInternal(TrainingConfig config, TrainingCallback callback) throws TrainingException {
         ensureOpen();
         if (config.getDataConfig() == null) {
             throw new TrainingException("dataConfig is required");
         }
         try {
+            PythonScriptLoader.ensureLoaded(engine, "_jpy_progress.py");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_training.py");
             Map<String, Object> kwargs = config.toPythonDict();
 
-            engine.put("_jpy_train_model_path", modelPath);
-            engine.put("_jpy_train_kwargs", kwargs);
-            boolean enableLogging = callback != null;
-            engine.exec("_jpy_train_result = jpy_train(_jpy_train_model_path, _jpy_train_kwargs, enable_logging=" + (enableLogging ? "True" : "False") + ")");
+            ProgressMonitor monitor = null;
+            Path progressFile = null;
+            Path cancelFile = null;
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> result = engine.eval("_jpy_train_result");
+            if (callback != null) {
+                progressFile = Files.createTempFile("jpy-train-progress-", ".jsonl");
+                cancelFile = Path.of(progressFile.toString() + ".cancel");
+                Files.deleteIfExists(cancelFile);
+                progressFile.toFile().deleteOnExit();
 
-            // Extract epoch log
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> epochLog = (List<Map<String, Object>>) result.getOrDefault("epoch_log", List.of());
+                currentProgressFile = progressFile;
+                currentCancelFile = cancelFile;
 
-            // Replay epoch log to callback
-            if (callback != null && epochLog != null) {
-                for (Map<String, Object> entry : epochLog) {
-                    int epoch = ((Number) entry.getOrDefault("epoch", 0)).intValue();
-                    callback.onEpoch(epoch, entry.toString());
-                }
+                monitor = new ProgressMonitor(progressFile, callback);
+                currentMonitor = monitor;
+                monitor.start();
             }
 
-            return new TrainingResult(
-                    (String) result.getOrDefault("best_model", ""),
-                    (String) result.getOrDefault("last_model", ""),
-                    (String) result.getOrDefault("save_dir", ""),
-                    ((Number) result.getOrDefault("epochs_completed", 0)).intValue(),
-                    ((Number) result.getOrDefault("best_fitness", 0.0)).floatValue(),
-                    epochLog
-            );
+            try {
+                engine.put("_jpy_train_model_path", modelPath);
+                engine.put("_jpy_train_kwargs", kwargs);
+                String progressPath = progressFile != null ? progressFile.toString() : "";
+                String cancelPath = cancelFile != null ? cancelFile.toString() : "";
+                engine.put("_jpy_train_progress", progressPath);
+                engine.put("_jpy_train_cancel", cancelPath);
+
+                engine.exec(
+                        "_jpy_train_result = jpy_train(" +
+                        "_jpy_train_model_path, _jpy_train_kwargs, " +
+                        "enable_logging=True, " +
+                        "progress_file=_jpy_train_progress or None, " +
+                        "cancel_file=_jpy_train_cancel or None)"
+                );
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> result = engine.eval("_jpy_train_result");
+
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> epochLog =
+                        (List<Map<String, Object>>) result.getOrDefault("epoch_log", List.of());
+
+                return new TrainingResult(
+                        (String) result.getOrDefault("best_model", ""),
+                        (String) result.getOrDefault("last_model", ""),
+                        (String) result.getOrDefault("save_dir", ""),
+                        ((Number) result.getOrDefault("epochs_completed", 0)).intValue(),
+                        ((Number) result.getOrDefault("best_fitness", 0.0)).floatValue(),
+                        epochLog
+                );
+            } finally {
+                if (monitor != null) {
+                    String error = monitor.awaitCompletion();
+                    if (error != null && !error.isEmpty()) {
+                        callback.onComplete(error);
+                    } else {
+                        callback.onComplete(null);
+                    }
+                    currentMonitor = null;
+                }
+                cleanupTrainingTempFiles(progressFile, cancelFile);
+            }
         } catch (JepException e) {
             throw new TrainingException("Training failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new TrainingException("Training interrupted", e);
+        } catch (IOException e) {
+            throw new TrainingException("Failed to create progress file", e);
         }
+    }
+
+    private void cleanupTrainingTempFiles(Path progressFile, Path cancelFile) {
+        try {
+            if (progressFile != null) Files.deleteIfExists(progressFile);
+        } catch (IOException e) {
+            log.debug("Failed to delete progress file: {}", e.getMessage());
+        }
+        try {
+            if (cancelFile != null) Files.deleteIfExists(cancelFile);
+        } catch (IOException e) {
+            log.debug("Failed to delete cancel file: {}", e.getMessage());
+        }
+        currentProgressFile = null;
+        currentCancelFile = null;
     }
 
     // ==================== Validation ====================
