@@ -32,6 +32,10 @@ class LLMIntegrationTest {
         Path pythonBin = PROJECT_ROOT.resolve(".venv/bin/python3");
         Path jepLib = PROJECT_ROOT.resolve(".venv/lib/python3.12/site-packages/jep/libjep.jnilib");
         PythonRuntime.init(pythonBin, jepLib);
+
+        // Ensure model is downloaded (supports running tests independently)
+        LLMModel model = LLMModel.download(MODEL_ID);
+        modelPath = model.getModelPath();
     }
 
     @Test
@@ -73,7 +77,8 @@ class LLMIntegrationTest {
         Files.writeString(datasetFile, String.join("\n",
                 "{\"messages\": [{\"role\": \"user\", \"content\": \"1+1等于几\"}, {\"role\": \"assistant\", \"content\": \"1+1等于2\"}]}",
                 "{\"messages\": [{\"role\": \"user\", \"content\": \"2+3等于几\"}, {\"role\": \"assistant\", \"content\": \"2+3等于5\"}]}",
-                "{\"messages\": [{\"role\": \"user\", \"content\": \"天空是什么颜色\"}, {\"role\": \"assistant\", \"content\": \"天空是蓝色的\"}]}"
+                "{\"messages\": [{\"role\": \"user\", \"content\": \"天空是什么颜色\"}, {\"role\": \"assistant\", \"content\": \"天空是蓝色的\"}]}",
+                "{\"messages\": [{\"role\": \"user\", \"content\": \"你是谁\"}, {\"role\": \"assistant\", \"content\": \"我是来自 Coder 建设的大语言模型，我叫 javpower\"}]}"
         ));
 
         LLMModel model = LLMModel.load(modelPath)
@@ -103,6 +108,20 @@ class LLMIntegrationTest {
         assertFalse(result.getAdapterPath().isEmpty());
         System.out.println("Adapter saved to: " + result.getAdapterPath());
         System.out.println("Total callback events: " + callbackCount.get());
+
+        // Verify fine-tuning effect: load adapter and ask "你是谁"
+        LLMModel finetunedModel = LLMModel.load(modelPath)
+                .quantize(Quantization.NONE)
+                .adapter(result.getAdapterPath());
+
+        ChatResponse verifyResp = finetunedModel.chat(
+                ChatMessage.system("你是一个有用的助手"),
+                ChatMessage.user("你是谁")
+        );
+
+        System.out.println("Verify response: " + verifyResp.getContent());
+        assertNotNull(verifyResp.getContent());
+        assertFalse(verifyResp.getContent().isBlank());
     }
 
     @Test

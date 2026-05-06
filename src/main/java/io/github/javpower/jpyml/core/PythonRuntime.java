@@ -96,6 +96,11 @@ public class PythonRuntime {
         pythonHome = pythonPath.getParent().getParent();
         jepNativeLib = jepLibraryPath;
 
+        // Set runtimeRoot for pip install working directory
+        if (runtimeRoot == null) {
+            runtimeRoot = pythonHome;
+        }
+
         // Find site-packages
         try (var stream = Files.walk(pythonHome, 5)) {
             sitePackagesPath = stream
@@ -155,19 +160,28 @@ public class PythonRuntime {
         cmd[3] = "install";
         System.arraycopy(packages, 0, cmd, 4, packages.length);
 
+        log.info("[pip] Running: {}", String.join(" ", cmd));
+        log.info("[pip] Working directory: {}", runtimeRoot);
+
         ProcessBuilder pb = new ProcessBuilder(cmd)
                 .redirectErrorStream(true)
                 .directory(runtimeRoot.toFile());
 
         Process p = pb.start();
         // Stream output
+        StringBuilder output = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
                 log.debug("[pip] {}", line);
             }
         }
-        return p.waitFor();
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+            log.warn("[pip] install failed (exit={}):\n{}", exitCode, output);
+        }
+        return exitCode;
     }
 
     /**
@@ -321,6 +335,13 @@ public class PythonRuntime {
         // PyTorch multiprocessing safety
         if (System.getenv("TORCH_SHARED_MEMORY") == null) {
             setEnv("TORCH_SHARED_MEMORY", "1");
+        }
+
+        // Prevent tokenizers from forking worker processes (causes JVM errors when
+        // the forked child inherits the parent's JVM state and misinterprets Python's
+        // "-c" sys.argv as a JVM option)
+        if (System.getenv("TOKENIZERS_PARALLELISM") == null) {
+            setEnv("TOKENIZERS_PARALLELISM", "false");
         }
     }
 

@@ -1,6 +1,12 @@
 """LLM inference (chat completion) for fine-tuned models."""
+import os
+import sys
 import torch
 import platform
+
+# Suppress harmless "Unrecognized option: -c" JVM error from safetensors fork on macOS
+# (safetensors Rust extension forks inside JVM, child inherits JVM state and fails on -c)
+os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 
 def _detect_device(device):
     if device == "auto" or device is None:
@@ -36,6 +42,9 @@ def jpy_llm_chat(model_path, adapter_path, messages, gen_kwargs, quantization=No
     model_kwargs = {"torch_dtype": dtype, "trust_remote_code": True}
     if device == "cpu":
         model_kwargs["device_map"] = {"": "cpu"}
+    elif device == "mps":
+        # MPS doesn't support device_map="auto", load to CPU first then move
+        model_kwargs["device_map"] = {"": "cpu"}
     else:
         model_kwargs["device_map"] = "auto"
 
@@ -49,7 +58,21 @@ def jpy_llm_chat(model_path, adapter_path, messages, gen_kwargs, quantization=No
         elif quantization == "int8":
             model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
 
-    model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    # Suppress harmless JVM error from safetensors Rust fork on macOS
+    # (forked child inherits JVM state, fails on Python's "-c" sys.argv)
+    old_stderr = os.dup(2)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull_fd, 2)
+    os.close(devnull_fd)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    finally:
+        os.dup2(old_stderr, 2)
+        os.close(old_stderr)
+
+    # Move model to MPS device after loading
+    if device == "mps":
+        model = model.to("mps")
 
     if adapter_path:
         from peft import PeftModel

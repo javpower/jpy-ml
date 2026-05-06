@@ -1,5 +1,6 @@
 """LLM fine-tuning via QLoRA/LoRA using HuggingFace ecosystem."""
 import os
+import sys
 import json
 import platform
 import torch
@@ -166,15 +167,32 @@ def jpy_llm_train(model_path, dataset_path, lora_kwargs, train_kwargs,
     bnb_config = _build_bnb_config(quantization)
     dtype = torch.float32 if device == "cpu" else torch.bfloat16
 
-    model_kwargs = {"torch_dtype": dtype}
+    model_kwargs = {"torch_dtype": dtype, "trust_remote_code": True}
     if device == "cpu":
+        model_kwargs["device_map"] = {"": "cpu"}
+    elif device == "mps":
+        # MPS doesn't support device_map="auto", load to CPU first then move
         model_kwargs["device_map"] = {"": "cpu"}
     else:
         model_kwargs["device_map"] = "auto"
     if bnb_config:
         model_kwargs["quantization_config"] = bnb_config
 
-    model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    # Suppress harmless JVM error from safetensors Rust fork on macOS
+    old_stderr = os.dup(2)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull_fd, 2)
+    os.close(devnull_fd)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    finally:
+        os.dup2(old_stderr, 2)
+        os.close(old_stderr)
+
+    # Move model to MPS device after loading
+    if device == "mps":
+        model = model.to("mps")
+
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token

@@ -4,6 +4,8 @@ import io.github.javpower.jpyml.core.PythonEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,11 +39,16 @@ public class DependencyManager {
         if (deps == null) throw new IllegalArgumentException("Unknown dependency group: " + group);
 
         PythonEngine engine = PythonEngine.getInstance();
+        List<String> failed = new ArrayList<>();
         for (String dep : deps) {
             boolean ok = engine.ensurePackage(dep, dep);
             if (!ok) {
+                failed.add(dep);
                 log.warn("Failed to install package: {}", dep);
             }
+        }
+        if (!failed.isEmpty()) {
+            throw new RuntimeException("Failed to install packages for group '" + group + "': " + failed);
         }
         verified.add(group);
         log.info("Dependency group '{}' verified", group);
