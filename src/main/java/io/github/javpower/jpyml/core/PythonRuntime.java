@@ -81,6 +81,8 @@ public class PythonRuntime {
     public static synchronized void init(Path pythonPath, Path jepLibraryPath) throws IOException {
         if (initialized.get()) return;
 
+        configureEnvironment();
+
         if (!Files.exists(pythonPath)) {
             throw new IOException("Python executable not found: " + pythonPath);
         }
@@ -115,6 +117,8 @@ public class PythonRuntime {
      */
     public static synchronized void init() throws IOException {
         if (initialized.get()) return;
+
+        configureEnvironment();
 
         getRuntimeRoot();
         Files.createDirectories(runtimeRoot);
@@ -272,6 +276,84 @@ public class PythonRuntime {
             return pythonHome.resolve("Lib").resolve("site-packages");
         }
         return pythonHome.resolve("lib").resolve("python" + ver).resolve("site-packages");
+    }
+
+    /**
+     * Configure environment variables for Python/PyTorch compatibility.
+     * Must be called before any Python interpreter is created.
+     * <p>
+     * These can be overridden via JVM system properties or environment variables:
+     * <ul>
+     *   <li>{@code -Djpy.python.gil=0} to disable forced GIL</li>
+     *   <li>{@code -Djpy.omp.threads=N} to set OpenMP thread count</li>
+     * </ul>
+     */
+    private static void configureEnvironment() {
+        // Force GIL on for Python 3.13+ (free-threaded build compatibility with PyTorch/JEP)
+        String gilOverride = System.getProperty("jpy.python.gil");
+        if ("0".equals(gilOverride) || "false".equals(gilOverride)) {
+            log.info("PYTHON_GIL override disabled via jpy.python.gil={}", gilOverride);
+        } else if (System.getenv("PYTHON_GIL") == null) {
+            log.info("Setting PYTHON_GIL=1 for Python 3.13+ / PyTorch/JEP compatibility");
+            setEnv("PYTHON_GIL", "1");
+        }
+
+        // Limit OpenMP/MKL threads to avoid conflicts with JEP's threading model
+        String ompOverride = System.getProperty("jpy.omp.threads");
+        if (System.getenv("OMP_NUM_THREADS") == null) {
+            int threads;
+            if (ompOverride != null) {
+                threads = Integer.parseInt(ompOverride);
+            } else {
+                int cores = Runtime.getRuntime().availableProcessors();
+                threads = Math.max(1, Math.min(cores, 4));
+            }
+            setEnv("OMP_NUM_THREADS", String.valueOf(threads));
+        }
+        if (System.getenv("MKL_NUM_THREADS") == null) {
+            setEnv("MKL_NUM_THREADS", System.getenv().getOrDefault("OMP_NUM_THREADS", "4"));
+        }
+        if (System.getenv("OPENBLAS_NUM_THREADS") == null) {
+            setEnv("OPENBLAS_NUM_THREADS", System.getenv().getOrDefault("OMP_NUM_THREADS", "4"));
+        }
+
+        // PyTorch multiprocessing safety
+        if (System.getenv("TORCH_SHARED_MEMORY") == null) {
+            setEnv("TORCH_SHARED_MEMORY", "1");
+        }
+    }
+
+    private static void setEnv(String key, String value) {
+        try {
+            // Try the standard approach first: modify the Collections$UnmodifiableMap backing
+            var env = System.getenv();
+            var field = env.getClass().getDeclaredField("m");
+            field.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            var writableEnv = (java.util.Map<String, String>) field.get(env);
+            writableEnv.put(key, value);
+        } catch (NoSuchFieldException e) {
+            // macOS JDK 17+: the env map is a java.util.Collections$UnmodifiableMap
+            // which wraps a LinkedHashMap. Try getting the source map differently.
+            try {
+                var env = System.getenv();
+                // Try android/jdk alternative: the map may use "source" field
+                for (var f : env.getClass().getSuperclass().getDeclaredFields()) {
+                    if (java.util.Map.class.isAssignableFrom(f.getType())) {
+                        f.setAccessible(true);
+                        @SuppressWarnings("unchecked")
+                        var writableEnv = (java.util.Map<String, String>) f.get(env);
+                        writableEnv.put(key, value);
+                        return;
+                    }
+                }
+                log.debug("Could not set env var {} via reflection: no map field found", key);
+            } catch (Exception e2) {
+                log.debug("Could not set env var {} via reflection: {}", key, e2.getMessage());
+            }
+        } catch (Exception e) {
+            log.debug("Could not set env var {}={} via reflection: {}", key, value, e.getMessage());
+        }
     }
 
     private static void ensureInitialized() {

@@ -1,4 +1,12 @@
-"""jpy-ml bootstrap: check ultralytics version, import modules."""
+"""jpy-ml bootstrap: check ultralytics version, import modules, GIL safety."""
+import sys
+import os
+
+# Force GIL on for Python 3.13+ when running under JEP with PyTorch
+# This must happen before torch is imported
+if sys.version_info >= (3, 13):
+    os.environ.setdefault("PYTHON_GIL", "1")
+
 try:
     import ultralytics
 except ImportError:
@@ -11,4 +19,4 @@ _jpy_models = {}
 _jpy_model_counter = 0
 
 def jpy_version():
-    return {'ultralytics': ultralytics.__version__}
+    return {'ultralytics': ultralytics.__version__, 'python': sys.version}

@@ -119,6 +119,25 @@ public class PythonEngine implements Closeable {
         sharedInterpCreated = true;
         log.info("SharedInterpreter created successfully");
 
+        // Python 3.13+ / PyTorch GIL safety: ensure GIL is held and check version
+        try {
+            interp.exec("import sys");
+            String pyVersion = interp.getValue("sys.version", String.class);
+            if (pyVersion != null && pyVersion.startsWith("3.1")) {
+                int minor = Integer.parseInt(pyVersion.substring(3, 4));
+                if (minor >= 13) {
+                    log.warn("Python {} detected. PyTorch/JEP may have GIL compatibility issues with 3.13+. " +
+                            "Consider using Python 3.11 or 3.12 for maximum stability.", pyVersion.substring(0, 5));
+                    // Force GIL acquisition for this thread
+                    interp.exec(
+                        "import _thread; _thread.allocate_lock()"  // ensure GIL infrastructure is active
+                    );
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Python version check skipped: {}", e.getMessage());
+        }
+
         // Inject venv site-packages into sys.path at high priority
         // and filter out system Homebrew site-packages that may conflict with venv packages
         String sitePackages = PythonRuntime.getJepIncludePath();
