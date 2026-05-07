@@ -76,7 +76,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.jpy-ml/python
-        key: jpy-ml-python-v2-${{ matrix.os }}-${{ hashFiles('src/main/resources/requirements.txt') }}
+        key: jpy-ml-python-v3-${{ matrix.os }}-${{ hashFiles('src/main/resources/requirements.txt') }}
 
     - name: Run AutoInstallTest
       run: mvn -B test -Dtest=AutoInstallTest

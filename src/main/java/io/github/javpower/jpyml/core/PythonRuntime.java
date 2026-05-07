@@ -743,6 +743,20 @@ public class PythonRuntime {
             if (isDir) {
                 Files.createDirectories(entryPath);
                 skipTarPadding(is, size);
+            } else if (typeFlag == '2') {
+                // Symbolic link — target name is in header at offset 157
+                String linkTarget = readTarString(header, 157, 100);
+                if (!linkTarget.isEmpty()) {
+                    Files.createDirectories(entryPath.getParent());
+                    // Remove existing file/dir if present
+                    Files.deleteIfExists(entryPath);
+                    try {
+                        Files.createSymbolicLink(entryPath, Path.of(linkTarget));
+                    } catch (Exception e) {
+                        log.debug("Could not create symlink {} -> {}: {}", entryPath, linkTarget, e.getMessage());
+                    }
+                }
+                skipTarPadding(is, size);
             } else {
                 // Regular file
                 Files.createDirectories(entryPath.getParent());
