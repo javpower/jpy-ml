@@ -9,9 +9,11 @@
 Detect &middot; Segment &middot; Track &middot; Classify &middot; Pose &middot; Train &middot; Validate &middot; Export &middot; Fine-tune LLMs — **all in pure Java.**
 
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.javpower/jpy-ml.svg)](https://central.sonatype.com/artifact/io.github.javpower/jpy-ml)
+[![CI](https://github.com/javpower/jpy-ml/actions/workflows/ci.yml/badge.svg)](https://github.com/javpower/jpy-ml/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-110%20passed-brightgreen)]()
 [![Java](https://img.shields.io/badge/JDK-17-orange)]()
-[![Python](https://img.shields.io/badge/CPython-3.13-blue)]()
+[![Python](https://img.shields.io/badge/CPython-3.12-blue)]()
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)]()
 
 <p align="center">
@@ -184,11 +186,11 @@ No Python installation. No model downloads. No config files. No `Map<String, Obj
 | Component | Version | Notes |
 |-----------|---------|-------|
 | JDK | Temurin 17 | via sdkman, **NOT GraalVM** (JNI crashes) |
-| Python | 3.13 (venv) | Project-local `.venv/` |
+| Python | 3.12 (auto-downloaded) | python-build-standalone, zero user setup |
 | Jep (pip + Maven) | 4.3.1 | Java-Python JNI bridge, Maven groupId: `org.ninia` |
 | Ultralytics | 8.4.45 | YOLOv8, YOLO11, YOLO26, RT-DETR, SAM |
 | PyTorch | 2.11.0 | CPU-only macOS ARM64 |
-| OS | macOS ARM64 (Apple Silicon) | |
+| OS | Linux, macOS, Windows | CI tested on all three platforms |
 
 **Important:** GraalVM CE's JNI support is incomplete and will crash when loading Jep's native library. Always use standard OpenJDK (Temurin, Zulu, etc.).
 
@@ -226,7 +228,7 @@ No Python installation. No model downloads. No config files. No `Map<String, Obj
 <dependency>
     <groupId>io.github.javpower</groupId>
     <artifactId>jpy-ml</artifactId>
-    <version>1.3.0</version>
+    <version>1.4.0</version>
 </dependency>
 ```
 
@@ -1237,7 +1239,6 @@ jpy-ml is designed as a universal Java-Python ML bridge. YOLO is the first engin
 - [x] Auto dependency installation for LLM (transformers, peft, trl, accelerate)
 
 ### Next
-- [ ] Windows / Linux CI testing
 - [ ] Unit tests for all value types
 
 ### Planned ML Engines

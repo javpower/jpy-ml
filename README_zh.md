@@ -9,9 +9,11 @@
 检测 &middot; 分割 &middot; 跟踪 &middot; 分类 &middot; 姿态 &middot; 训练 &middot; 验证 &middot; 导出 &middot; LLM 微调 — **纯 Java 完成。**
 
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.javpower/jpy-ml.svg)](https://central.sonatype.com/artifact/io.github.javpower/jpy-ml)
+[![CI](https://github.com/javpower/jpy-ml/actions/workflows/ci.yml/badge.svg)](https://github.com/javpower/jpy-ml/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-110%20passed-brightgreen)]()
 [![Java](https://img.shields.io/badge/JDK-17-orange)]()
-[![Python](https://img.shields.io/badge/CPython-3.13-blue)]()
+[![Python](https://img.shields.io/badge/CPython-3.12-blue)]()
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)]()
 
 <p align="center">
@@ -185,7 +187,7 @@ try (Model model = Model.preset("yolov8n")) {
 <dependency>
     <groupId>io.github.javpower</groupId>
     <artifactId>jpy-ml</artifactId>
-    <version>1.3.0</version>
+    <version>1.4.0</version>
 </dependency>
 ```
 
@@ -196,13 +198,13 @@ try (Model model = Model.preset("yolov8n")) {
 | 组件 | 版本 | 备注 |
 |------|------|------|
 | JDK | Temurin 17 | 通过 sdkman，**不要用 GraalVM**（JNI 崩溃） |
-| Python | 3.13 (venv) | 项目本地 `.venv/` |
+| Python | 3.12（自动下载） | python-build-standalone，用户无需安装 |
 | Jep (pip + Maven) | 4.3.1 | Java-Python JNI 桥接，Maven groupId: `org.ninia` |
 | Ultralytics | 8.4.45 | YOLOv8, YOLO11, YOLO26, RT-DETR, SAM |
 | OpenCV | 4.6.0+ | 图像处理（可选） |
 | MediaPipe | 0.10.0+ | 手部/面部/姿态检测（可选） |
 | PyTorch | 2.11.0 | CPU-only macOS ARM64 |
-| OS | macOS ARM64 (Apple Silicon) | |
+| OS | Linux、macOS、Windows | 三个平台均通过 CI 测试 |
 
 ### 依赖管理
 
@@ -708,7 +710,6 @@ jpy-ml 的定位是通用 Java-Python ML 桥接框架。YOLO 是第一个引擎 
 - [x] LLM 依赖自动安装（transformers、peft、trl、accelerate）
 
 ### 近期
-- [ ] Windows / Linux CI 测试
 - [ ] 所有值类型的单元测试
 
 ### 计划中的 ML 引擎
