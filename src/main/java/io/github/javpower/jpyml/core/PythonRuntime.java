@@ -698,7 +698,9 @@ public class PythonRuntime {
                 continue;
             }
 
+            long mode = readTarOctal(header, 100, 8);
             boolean isDir = (typeFlag == '5') || name.endsWith("/");
+            boolean isExecutable = (mode & 0111) != 0;
 
             if (isDir) {
                 Files.createDirectories(entryPath);
@@ -715,6 +717,14 @@ public class PythonRuntime {
                         if (n < 0) break;
                         out.write(buf, 0, n);
                         remaining -= n;
+                    }
+                }
+                // Restore executable permission from tar header
+                if (isExecutable && !isWindows()) {
+                    try {
+                        entryPath.toFile().setExecutable(true, false);
+                    } catch (Exception e) {
+                        log.debug("Could not set executable bit on {}: {}", entryPath, e.getMessage());
                     }
                 }
                 skipTarPadding(is, size);

@@ -158,7 +158,8 @@ public class AutoInstallTest {
     @Test
     void test09_PythonVersion() throws Exception {
         PythonEngine engine = PythonEngine.getInstance();
-        String version = engine.eval("import sys; sys.version.split()[0]", String.class);
+        engine.exec("import sys");
+        String version = engine.eval("sys.version.split()[0]", String.class);
         System.out.println("[CI] Python version: " + version);
         assertTrue(version.startsWith("3.12"),
                 "Expected Python 3.12.x but got: " + version);
