@@ -1,5 +1,6 @@
 package io.github.javpower.jpyml.ml.model;
 
+import io.github.javpower.jpyml.core.DependencyManager;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
 import io.github.javpower.jpyml.exception.InferenceException;
@@ -55,6 +56,7 @@ public class SAM2Model implements AutoCloseable {
         this.modelPath = modelPath;
 
         try {
+            DependencyManager.ensure("cv");
             engine = PythonEngine.getInstance();
             PythonScriptLoader.ensureLoaded(engine, "_jpy_init.py");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_sam2.py");

@@ -1,13 +1,23 @@
 name: CI
 
 on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '**.mp4'
+      - '**.jpg'
+      - '**.jpeg'
+      - '**.png'
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   auto-install:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
@@ -23,5 +33,35 @@ jobs:
         distribution: temurin
         cache: maven
 
-    - name: Verify auto-install
+    - name: Show environment info
+      shell: bash
+      run: |
+        echo "OS: ${{ matrix.os }}"
+        echo "Java: $(java -version 2>&1 | head -1)"
+        echo "Arch: $(uname -m 2>/dev/null || echo 'N/A')"
+        echo "PWD: $(pwd)"
+        echo "Disk free:"
+        df -h . 2>/dev/null || echo "N/A"
+
+    - name: Cache Python runtime
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.jpy-ml/python
+          ~/.jpy-ml/downloads
+        key: jpy-ml-python-${{ matrix.os }}-${{ hashFiles('src/main/resources/requirements.txt') }}
+        restore-keys: |
+          jpy-ml-python-${{ matrix.os }}-
+
+    - name: Run AutoInstallTest
       run: mvn -B test -Dtest=AutoInstallTest
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs-${{ matrix.os }}
+        path: |
+          target/surefire-reports/
+          target/test-classes/
+        retention-days: 7

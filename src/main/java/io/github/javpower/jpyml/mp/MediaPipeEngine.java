@@ -1,5 +1,6 @@
 package io.github.javpower.jpyml.mp;
 
+import io.github.javpower.jpyml.core.DependencyManager;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
 import io.github.javpower.jpyml.exception.InferenceException;
@@ -36,6 +37,7 @@ public class MediaPipeEngine implements AutoCloseable {
     private void ensureInitialized() throws JepException {
         if (!initialized) {
             log.info("Initializing MediaPipe modules");
+            DependencyManager.ensure("mediapipe");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_mediapipe.py");
             engine.exec("_jpy_mp_modules = jpy_mp_init()");
             initialized = true;

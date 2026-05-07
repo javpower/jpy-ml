@@ -10,6 +10,9 @@ import java.net.URL;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Manages an embedded, self-contained Python runtime.
@@ -75,7 +78,7 @@ public class PythonRuntime {
      * Initialize with an existing Python installation (e.g. a venv).
      * Skips the python-build-standalone download. Useful for development.
      *
-     * @param pythonPath       path to the Python executable (e.g. /path/to/venv/bin/python3)
+     * @param pythonPath       path to the Python executable
      * @param jepLibraryPath   path to libjep.jnilib / libjep.so / jep.dll
      */
     public static synchronized void init(Path pythonPath, Path jepLibraryPath) throws IOException {
@@ -91,9 +94,17 @@ public class PythonRuntime {
         }
 
         // Derive pythonHome from the python executable
-        // venv: pythonPath = venv/bin/python3  ->  pythonHome = venv
-        // standalone: pythonPath = python/bin/python3  ->  pythonHome = python
-        pythonHome = pythonPath.getParent().getParent();
+        // venv (Unix):   venv/bin/python3       -> pythonHome = venv
+        // venv (Win):    venv\Scripts\python.exe -> pythonHome = venv
+        // standalone (Unix): python/bin/python3  -> pythonHome = python
+        // standalone (Win):  dir\python.exe      -> pythonHome = dir
+        Path parent = pythonPath.getParent();
+        if (isWindows() && parent.getFileName() != null &&
+                parent.getFileName().toString().equalsIgnoreCase("Scripts")) {
+            pythonHome = parent.getParent();
+        } else {
+            pythonHome = parent.getParent() != null ? parent.getParent() : parent;
+        }
         jepNativeLib = jepLibraryPath;
 
         // Set runtimeRoot for pip install working directory
@@ -168,7 +179,6 @@ public class PythonRuntime {
                 .directory(runtimeRoot.toFile());
 
         Process p = pb.start();
-        // Stream output
         StringBuilder output = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
             String line;
@@ -215,7 +225,6 @@ public class PythonRuntime {
 
     /**
      * Shutdown the runtime: close the PythonEngine singleton and reset state.
-     * Call this when your application is exiting to ensure clean shutdown.
      */
     public static synchronized void shutdown() {
         if (!initialized.get()) return;
@@ -241,11 +250,10 @@ public class PythonRuntime {
     }
 
     /**
-     * Ensure Python packages are installed. Checks for import availability and installs missing packages.
+     * Ensure Python packages are installed.
      */
     public static int ensurePackages(String... packages) throws IOException, InterruptedException {
         ensureInitialized();
-        // Build a list of packages that need installation
         List<String> missing = new ArrayList<>();
         for (String pkg : packages) {
             if (!checkPackageInstalled(pkg)) {
@@ -265,7 +273,6 @@ public class PythonRuntime {
                     pythonExe.toString(), "-c", "import " + packageName
             ).redirectErrorStream(true);
             Process p = pb.start();
-            // Drain stdout/stderr to prevent pipe buffer deadlock
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
                 while (reader.readLine() != null) { /* drain */ }
             }
@@ -295,17 +302,8 @@ public class PythonRuntime {
 
     /**
      * Configure environment variables for Python/PyTorch compatibility.
-     * Must be called before any Python interpreter is created.
-     * <p>
-     * These can be overridden via JVM system properties or environment variables:
-     * <ul>
-     *   <li>{@code -Djpy.python.gil=0} to disable forced GIL</li>
-     *   <li>{@code -Djpy.omp.threads=N} to set OpenMP thread count</li>
-     * </ul>
      */
     private static void configureEnvironment() {
-        // Force GIL on for Python 3.13+ (free-threaded build compatibility with PyTorch/JEP)
-        // Not needed for Python 3.12.x, but kept for forward compatibility if users upgrade
         String gilOverride = System.getProperty("jpy.python.gil");
         if ("0".equals(gilOverride) || "false".equals(gilOverride)) {
             log.info("PYTHON_GIL override disabled via jpy.python.gil={}", gilOverride);
@@ -313,7 +311,6 @@ public class PythonRuntime {
             setEnv("PYTHON_GIL", "1");
         }
 
-        // Limit OpenMP/MKL threads to avoid conflicts with JEP's threading model
         String ompOverride = System.getProperty("jpy.omp.threads");
         if (System.getenv("OMP_NUM_THREADS") == null) {
             int threads;
@@ -332,14 +329,10 @@ public class PythonRuntime {
             setEnv("OPENBLAS_NUM_THREADS", System.getenv().getOrDefault("OMP_NUM_THREADS", "4"));
         }
 
-        // PyTorch multiprocessing safety
         if (System.getenv("TORCH_SHARED_MEMORY") == null) {
             setEnv("TORCH_SHARED_MEMORY", "1");
         }
 
-        // Prevent tokenizers from forking worker processes (causes JVM errors when
-        // the forked child inherits the parent's JVM state and misinterprets Python's
-        // "-c" sys.argv as a JVM option)
         if (System.getenv("TOKENIZERS_PARALLELISM") == null) {
             setEnv("TOKENIZERS_PARALLELISM", "false");
         }
@@ -347,7 +340,6 @@ public class PythonRuntime {
 
     private static void setEnv(String key, String value) {
         try {
-            // Try the standard approach first: modify the Collections$UnmodifiableMap backing
             var env = System.getenv();
             var field = env.getClass().getDeclaredField("m");
             field.setAccessible(true);
@@ -355,11 +347,8 @@ public class PythonRuntime {
             var writableEnv = (java.util.Map<String, String>) field.get(env);
             writableEnv.put(key, value);
         } catch (NoSuchFieldException e) {
-            // macOS JDK 17+: the env map is a java.util.Collections$UnmodifiableMap
-            // which wraps a LinkedHashMap. Try getting the source map differently.
             try {
                 var env = System.getenv();
-                // Try android/jdk alternative: the map may use "source" field
                 for (var f : env.getClass().getSuperclass().getDeclaredFields()) {
                     if (java.util.Map.class.isAssignableFrom(f.getType())) {
                         f.setAccessible(true);
@@ -389,10 +378,18 @@ public class PythonRuntime {
         if (exe != null && Files.exists(exe)) return exe;
         // Fallback: try the venv's pip directly
         if (pythonHome != null) {
-            Path pip = pythonHome.resolve("bin").resolve("pip");
-            if (Files.exists(pip)) return pip;
-            Path pip3 = pythonHome.resolve("bin").resolve("pip3");
-            if (Files.exists(pip3)) return pip3;
+            if (isWindows()) {
+                Path scripts = pythonHome.resolve("Scripts");
+                Path pip = scripts.resolve("pip.exe");
+                if (Files.exists(pip)) return pip;
+                Path pip3 = scripts.resolve("pip3.exe");
+                if (Files.exists(pip3)) return pip3;
+            } else {
+                Path pip = pythonHome.resolve("bin").resolve("pip");
+                if (Files.exists(pip)) return pip;
+                Path pip3 = pythonHome.resolve("bin").resolve("pip3");
+                if (Files.exists(pip3)) return pip3;
+            }
         }
         return null;
     }
@@ -434,6 +431,8 @@ public class PythonRuntime {
         return sp != null ? sp.toString() : "";
     }
 
+    // ==================== Download & Extract ====================
+
     private static void downloadAndExtractPython(String platformKey) throws IOException {
         String downloadUrl = buildDownloadUrl(platformKey);
         String archiveName = downloadUrl.substring(downloadUrl.lastIndexOf('/') + 1);
@@ -465,7 +464,6 @@ public class PythonRuntime {
                 throw new IOException("Python executable not found after extraction: " + getPythonExecutable());
             }
         } catch (Exception e) {
-            // Clean up partial extraction so next run retries
             Path pythonDir = pythonHome;
             if (pythonDir != null && Files.exists(pythonDir)) {
                 deleteRecursively(pythonDir);
@@ -486,13 +484,9 @@ public class PythonRuntime {
         }
     }
 
-    /**
-     * Install packages from the bundled requirements.txt resource.
-     */
     private static void installBundledRequirements() throws IOException {
         Path pythonExe = getPythonExecutable();
 
-        // Extract requirements.txt from classpath to a temp file
         Path tempReq = Files.createTempFile("jpy-ml-requirements", ".txt");
         try (var is = PythonRuntime.class.getResourceAsStream("/requirements.txt")) {
             if (is == null) {
@@ -580,13 +574,193 @@ public class PythonRuntime {
         }
     }
 
+    // ==================== Pure Java Archive Extraction ====================
+
+    private static final int TAR_BLOCK = 512;
+
     private static void extractTar(Path archive, Path targetDir, String platformKey) throws IOException {
-        // The tar.gz from python-build-standalone extracts to a directory like
-        // "python/install" or "cpython-.../python/install"
-        // We extract to a temp dir, then move the python/ directory to the right place
         Path tempExtract = runtimeRoot.resolve("downloads").resolve("extract-temp");
         Files.createDirectories(tempExtract);
 
+        if (archive.toString().endsWith(".tar.zst")) {
+            // zstd requires external tool — try tar command (available on most Linux/macOS)
+            extractTarExternal(archive, tempExtract);
+        } else {
+            // .tar.gz — pure Java extraction, works on all platforms including Windows
+            extractTarGzJava(archive, tempExtract);
+        }
+
+        // Find the "python" directory inside the extracted content
+        Path pythonDir = findPythonDir(tempExtract);
+        if (pythonDir == null) {
+            throw new IOException("Could not find python directory in extracted archive");
+        }
+
+        // Move to final location
+        Path finalDir = targetDir.resolve(platformKey);
+        Files.createDirectories(finalDir);
+        moveDirectoryContents(pythonDir, finalDir);
+
+        // Cleanup temp
+        deleteRecursively(tempExtract);
+    }
+
+    private static void extractZip(Path archive, Path targetDir, String platformKey) throws IOException {
+        Path tempExtract = runtimeRoot.resolve("downloads").resolve("extract-temp");
+        Files.createDirectories(tempExtract);
+
+        extractZipJava(archive, tempExtract);
+
+        Path pythonDir = findPythonDir(tempExtract);
+        if (pythonDir == null) {
+            throw new IOException("Could not find python directory in extracted archive");
+        }
+
+        Path finalDir = targetDir.resolve(platformKey);
+        Files.createDirectories(finalDir);
+        moveDirectoryContents(pythonDir, finalDir);
+        deleteRecursively(tempExtract);
+    }
+
+    /**
+     * Pure Java tar.gz extraction. No external tools required.
+     */
+    private static void extractTarGzJava(Path archive, Path targetDir) throws IOException {
+        log.info("Extracting tar.gz (pure Java)...");
+        try (InputStream fis = Files.newInputStream(archive);
+             InputStream gis = new GZIPInputStream(fis)) {
+            extractTarStream(gis, targetDir);
+        }
+    }
+
+    private static void extractTarStream(InputStream is, Path targetDir) throws IOException {
+        byte[] header = new byte[TAR_BLOCK];
+        String longName = null;
+
+        while (true) {
+            // Read 512-byte header
+            if (!readFully(is, header, TAR_BLOCK)) break;
+
+            // Check for end of archive (two zero blocks)
+            if (isZeroBlock(header)) {
+                readFully(is, header, TAR_BLOCK);
+                break;
+            }
+
+            // Parse header fields
+            String name = readTarString(header, 0, 100).trim();
+            long size = readTarOctal(header, 124, 12);
+            byte typeFlag = header[156];
+            String prefix = readTarString(header, 345, 155).trim();
+
+            // UStar long path: combine prefix + name
+            if (!prefix.isEmpty()) {
+                name = prefix + "/" + name;
+            }
+
+            // GNU tar long name (@LongLink)
+            if (typeFlag == 'L') {
+                longName = readTarData(is, size);
+                skipTarPadding(is, size);
+                continue;
+            }
+            if (typeFlag == 'K') {
+                // Long link name — skip
+                skipTarData(is, size);
+                continue;
+            }
+
+            // Apply GNU long name if set
+            if (longName != null) {
+                name = longName;
+                longName = null;
+            }
+
+            // Skip PaxHeader entries
+            if (name.contains("PaxHeader") || name.contains("@LongLink") || name.isEmpty()) {
+                skipTarData(is, size);
+                continue;
+            }
+
+            // Strip leading "./" or "/"
+            while (name.startsWith("./")) name = name.substring(2);
+            while (name.startsWith("/")) name = name.substring(1);
+
+            if (name.isEmpty()) {
+                skipTarData(is, size);
+                continue;
+            }
+
+            Path entryPath = targetDir.resolve(name).normalize();
+            // Security check: prevent path traversal
+            if (!entryPath.startsWith(targetDir)) {
+                skipTarData(is, size);
+                continue;
+            }
+
+            boolean isDir = (typeFlag == '5') || name.endsWith("/");
+
+            if (isDir) {
+                Files.createDirectories(entryPath);
+                skipTarPadding(is, size);
+            } else {
+                // Regular file
+                Files.createDirectories(entryPath.getParent());
+                try (OutputStream out = Files.newOutputStream(entryPath)) {
+                    byte[] buf = new byte[8192];
+                    long remaining = size;
+                    while (remaining > 0) {
+                        int toRead = (int) Math.min(buf.length, remaining);
+                        int n = is.read(buf, 0, toRead);
+                        if (n < 0) break;
+                        out.write(buf, 0, n);
+                        remaining -= n;
+                    }
+                }
+                skipTarPadding(is, size);
+            }
+        }
+    }
+
+    /**
+     * Pure Java zip extraction. No external tools required.
+     */
+    private static void extractZipJava(Path archive, Path targetDir) throws IOException {
+        log.info("Extracting zip (pure Java)...");
+        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                String name = entry.getName();
+                // Strip leading "./" or "/"
+                while (name.startsWith("./")) name = name.substring(2);
+                while (name.startsWith("/")) name = name.substring(1);
+
+                if (name.isEmpty()) {
+                    zis.closeEntry();
+                    continue;
+                }
+
+                Path entryPath = targetDir.resolve(name).normalize();
+                if (!entryPath.startsWith(targetDir)) {
+                    zis.closeEntry();
+                    continue;
+                }
+
+                if (entry.isDirectory()) {
+                    Files.createDirectories(entryPath);
+                } else {
+                    Files.createDirectories(entryPath.getParent());
+                    Files.copy(zis, entryPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+                zis.closeEntry();
+            }
+        }
+    }
+
+    /**
+     * External tar extraction (fallback for .tar.zst on Linux/macOS).
+     */
+    private static void extractTarExternal(Path archive, Path tempExtract) throws IOException {
         ProcessBuilder pb;
         if (archive.toString().endsWith(".tar.zst")) {
             pb = new ProcessBuilder("tar", "--zstd", "-xf", archive.toString(), "-C", tempExtract.toString());
@@ -608,68 +782,104 @@ public class PythonRuntime {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted during extraction", e);
         }
-
-        // Find the "python" directory inside the extracted content
-        // python-build-standalone extracts to: cpython-{ver}+{release}-{platform}/python/
-        Path pythonDir = findPythonDir(tempExtract);
-        if (pythonDir == null) {
-            throw new IOException("Could not find python directory in extracted archive");
-        }
-
-        // Move to final location
-        Path finalDir = targetDir.resolve(platformKey);
-        Files.createDirectories(finalDir);
-        moveDirectoryContents(pythonDir, finalDir);
-
-        // Cleanup temp
-        deleteRecursively(tempExtract);
     }
 
-    private static void extractZip(Path archive, Path targetDir, String platformKey) throws IOException {
-        Path tempExtract = runtimeRoot.resolve("downloads").resolve("extract-temp");
+    // ==================== Tar Helpers ====================
 
-        ProcessBuilder pb = new ProcessBuilder("unzip", "-q", archive.toString(), "-d", tempExtract.toString());
-        pb.redirectErrorStream(true);
-
-        try {
-            Process p = pb.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                while (reader.readLine() != null) { /* drain */ }
-            }
-            int exit = p.waitFor();
-            if (exit != 0) {
-                throw new IOException("unzip failed (exit code " + exit + ")");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted during extraction", e);
+    private static boolean readFully(InputStream is, byte[] buf, int len) throws IOException {
+        int total = 0;
+        while (total < len) {
+            int n = is.read(buf, total, len - total);
+            if (n < 0) return false;
+            total += n;
         }
-
-        Path pythonDir = findPythonDir(tempExtract);
-        if (pythonDir == null) {
-            throw new IOException("Could not find python directory in extracted archive");
-        }
-
-        Path finalDir = targetDir.resolve(platformKey);
-        Files.createDirectories(finalDir);
-        moveDirectoryContents(pythonDir, finalDir);
-        deleteRecursively(tempExtract);
+        return true;
     }
+
+    private static boolean isZeroBlock(byte[] buf) {
+        for (byte b : buf) {
+            if (b != 0) return false;
+        }
+        return true;
+    }
+
+    private static String readTarString(byte[] buf, int offset, int length) {
+        int end = offset;
+        while (end < offset + length && buf[end] != 0) end++;
+        return new String(buf, offset, end - offset);
+    }
+
+    private static long readTarOctal(byte[] buf, int offset, int length) {
+        String s = readTarString(buf, offset, length).trim();
+        if (s.isEmpty()) return 0;
+        // Handle GNU tar base-256 encoding
+        if ((buf[offset] & 0x80) != 0) {
+            long val = 0;
+            for (int i = offset; i < offset + length; i++) {
+                val = (val << 8) | (buf[i] & 0xFF);
+            }
+            return val;
+        }
+        return Long.parseLong(s, 8);
+    }
+
+    private static String readTarData(InputStream is, long size) throws IOException {
+        byte[] data = new byte[(int) Math.min(size, 65536)];
+        int total = 0;
+        while (total < data.length) {
+            int n = is.read(data, total, data.length - total);
+            if (n < 0) break;
+            total += n;
+        }
+        return new String(data, 0, total).trim();
+    }
+
+    private static void skipTarData(InputStream is, long size) throws IOException {
+        long remaining = size;
+        while (remaining > 0) {
+            long skipped = is.skip(remaining);
+            if (skipped <= 0) {
+                // skip() returned 0, try read()
+                if (is.read() < 0) break;
+                remaining--;
+            } else {
+                remaining -= skipped;
+            }
+        }
+    }
+
+    private static void skipTarPadding(InputStream is, long size) throws IOException {
+        long padded = (size + TAR_BLOCK - 1) & ~(TAR_BLOCK - 1);
+        long toSkip = padded - size;
+        if (toSkip > 0) skipTarData(is, toSkip);
+    }
+
+    // ==================== Python Directory Detection ====================
 
     private static Path findPythonDir(Path searchRoot) throws IOException {
-        // python-build-standalone extracts to a top-level dir containing a "python/" subdir
+        // python-build-standalone extracts to a top-level dir containing a "python/" subdir:
+        //   Unix:    cpython-{ver}+{release}-{platform}/python/
+        //            Contains: bin/, lib/
+        //   Windows: cpython-{ver}+{release}-{platform}/python/
+        //            Contains: python.exe, Lib/, Scripts/
         try (var stream = Files.walk(searchRoot, 3)) {
             return stream
                     .filter(p -> p.getFileName().toString().equals("python") && Files.isDirectory(p))
                     .filter(p -> {
-                        Path bin = p.resolve("bin");
-                        Path lib = p.resolve("lib");
-                        return Files.exists(bin) || Files.exists(lib);
+                        // Unix layout
+                        if (Files.exists(p.resolve("bin")) || Files.exists(p.resolve("lib"))) return true;
+                        // Windows layout
+                        if (Files.exists(p.resolve("python.exe"))) return true;
+                        if (Files.exists(p.resolve("Lib"))) return true;
+                        if (Files.exists(p.resolve("Scripts"))) return true;
+                        return false;
                     })
                     .findFirst()
                     .orElse(null);
         }
     }
+
+    // ==================== File Utilities ====================
 
     private static void moveDirectoryContents(Path source, Path target) throws IOException {
         try (var stream = Files.list(source)) {
@@ -688,6 +898,8 @@ public class PythonRuntime {
                     .forEach(File::delete);
         }
     }
+
+    // ==================== Platform Detection ====================
 
     public static String getPlatformKey() {
         String os = System.getProperty("os.name").toLowerCase();

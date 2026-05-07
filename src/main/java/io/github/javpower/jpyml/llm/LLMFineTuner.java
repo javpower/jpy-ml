@@ -1,5 +1,6 @@
 package io.github.javpower.jpyml.llm;
 
+import io.github.javpower.jpyml.core.DependencyManager;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
 import io.github.javpower.jpyml.llm.config.LLMTrainConfig;
