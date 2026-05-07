@@ -490,6 +490,25 @@ public class PythonRuntime {
         sitePackagesPath = computeSitePackages();
         jepNativeLib = findJepNativeLibrary();
         if (jepNativeLib == null || !Files.exists(jepNativeLib)) {
+            // Diagnostic: show what's actually in site-packages
+            Path sp = computeSitePackages();
+            System.out.println("[jpy-ml] jep native lib NOT found");
+            System.out.println("[jpy-ml] site-packages: " + sp);
+            System.out.println("[jpy-ml] site-packages exists: " + (sp != null && Files.exists(sp)));
+            if (sp != null && Files.exists(sp)) {
+                Path jepDir = sp.resolve("jep");
+                System.out.println("[jpy-ml] jep dir exists: " + Files.exists(jepDir));
+                if (Files.exists(jepDir)) {
+                    System.out.println("[jpy-ml] jep dir contents:");
+                    try (var stream = Files.walk(jepDir, 2)) {
+                        stream.forEach(f -> System.out.println("  " + f.getFileName()));
+                    }
+                }
+                System.out.println("[jpy-ml] site-packages top-level:");
+                try (var stream = Files.list(sp)) {
+                    stream.map(p -> p.getFileName().toString()).sorted().forEach(n -> System.out.println("  " + n));
+                }
+            }
             throw new IOException("Jep native library not found after installation. " +
                     "Expected at: " + (jepNativeLib != null ? jepNativeLib : "site-packages/jep/"));
         }
@@ -497,6 +516,7 @@ public class PythonRuntime {
 
     private static void installBundledRequirements() throws IOException {
         Path pythonExe = getPythonExecutable();
+        System.out.println("[jpy-ml] Installing bundled requirements with: " + pythonExe);
 
         Path tempReq = Files.createTempFile("jpy-ml-requirements", ".txt");
         try (var is = PythonRuntime.class.getResourceAsStream("/requirements.txt")) {
@@ -508,18 +528,19 @@ public class PythonRuntime {
 
         try {
             ProcessBuilder pb = new ProcessBuilder(
-                    pythonExe.toString(), "-m", "pip", "install", "-r", tempReq.toString()
+                    pythonExe.toString(), "-m", "pip", "install", "-v", "-r", tempReq.toString()
             ).redirectErrorStream(true);
 
             Process p = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    log.debug("[pip] {}", line);
+                    System.out.println("[pip] " + line);
                 }
             }
 
             int exit = p.waitFor();
+            System.out.println("[jpy-ml] pip install exit code: " + exit);
             if (exit != 0) {
                 throw new IOException("pip install failed (exit code " + exit + ")");
             }
