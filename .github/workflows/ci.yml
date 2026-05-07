@@ -78,6 +78,16 @@ jobs:
         path: ~/.jpy-ml/python
         key: jpy-ml-python-v3-${{ matrix.os }}-${{ hashFiles('src/main/resources/requirements.txt') }}
 
+    - name: Set PYTHONHOME for macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        if [ "$(uname -m)" = "arm64" ]; then
+          echo "PYTHONHOME=$HOME/.jpy-ml/python/macos-arm64" >> $GITHUB_ENV
+        else
+          echo "PYTHONHOME=$HOME/.jpy-ml/python/macos-x86_64" >> $GITHUB_ENV
+        fi
+
     - name: Run AutoInstallTest
       run: mvn -B test -Dtest=AutoInstallTest
 

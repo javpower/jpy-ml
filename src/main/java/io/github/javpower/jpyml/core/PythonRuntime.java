@@ -142,6 +142,12 @@ public class PythonRuntime {
         String platformKey = getPlatformKey();
         pythonHome = runtimeRoot.resolve("python").resolve(platformKey);
 
+        // python-build-standalone on macOS has /install as the baked-in prefix.
+        // Set PYTHONHOME so the embedded Python (via Jep JNI) can find its stdlib.
+        if (System.getenv("PYTHONHOME") == null) {
+            setEnv("PYTHONHOME", pythonHome.toString());
+        }
+
         if (!Files.exists(getPythonExecutable())) {
             log.info("First-time setup: downloading Python {} for {}...", PYTHON_VERSION, platformKey);
             downloadAndExtractPython(platformKey);
