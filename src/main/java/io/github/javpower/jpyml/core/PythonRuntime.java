@@ -532,17 +532,11 @@ public class PythonRuntime {
         Path pythonExe = getPythonExecutable();
         System.out.println("[jpy-ml] Installing bundled requirements with: " + pythonExe);
 
-        Path tempReq = Files.createTempFile("jpy-ml-requirements", ".txt");
-        try (var is = PythonRuntime.class.getResourceAsStream("/requirements.txt")) {
-            if (is == null) {
-                throw new IOException("requirements.txt not found in classpath");
-            }
-            Files.copy(is, tempReq, StandardCopyOption.REPLACE_EXISTING);
-        }
-
+        // Install directly by package name instead of temp file to avoid
+        // classpath resource loading issues on different platforms
         try {
             ProcessBuilder pb = new ProcessBuilder(
-                    pythonExe.toString(), "-m", "pip", "install", "-v", "-r", tempReq.toString()
+                    pythonExe.toString(), "-m", "pip", "install", "jep>=4.3.1", "numpy>=1.26"
             ).redirectErrorStream(true);
 
             Process p = pb.start();
@@ -561,8 +555,6 @@ public class PythonRuntime {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted during pip install", e);
-        } finally {
-            Files.deleteIfExists(tempReq);
         }
     }
 
