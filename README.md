@@ -1,10 +1,18 @@
+<div align="center">
+
 # jpy-ml
 
-<p align="center">
-  <strong>The definitive Java framework for production AI/ML — 6 lines of Java to detect, segment, track, and classify anything.</strong>
-</p>
+**The most powerful Java AI/ML framework ever built.**
 
-![index.png](docs%2Findex.png)
+*One dependency. Zero Python. Full PyTorch. Production-ready.*
+
+Detect &middot; Segment &middot; Track &middot; Classify &middot; Pose &middot; Train &middot; Validate &middot; Export &middot; Fine-tune LLMs — **all in pure Java.**
+
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.javpower/jpy-ml.svg)](https://central.sonatype.com/artifact/io.github.javpower/jpy-ml)
+[![Tests](https://img.shields.io/badge/tests-110%20passed-brightgreen)]()
+[![Java](https://img.shields.io/badge/JDK-17-orange)]()
+[![Python](https://img.shields.io/badge/CPython-3.13-blue)]()
+[![License](https://img.shields.io/badge/license-Apache%202.0-green)]()
 
 <p align="center">
   <a href="README_zh.md">中文文档</a> &middot;
@@ -13,24 +21,79 @@
   <a href="#roadmap">Roadmap</a>
 </p>
 
+![index.png](docs%2Findex.png)
+
+</div>
+
 ---
 
-**One dependency. One line to load. One line to infer.** jpy-ml embeds the full Python ML ecosystem
-directly into the JVM — YOLO, SAM, MediaPipe, OpenCV — all behind clean, type-safe Java APIs
-with zero Python setup required.
+## Why jpy-ml?
+
+jpy-ml embeds the **entire Python ML ecosystem directly into the JVM** — YOLO, SAM, MediaPipe, OpenCV, HuggingFace LLMs — all behind clean, type-safe Java APIs with **zero Python setup, zero REST servers, zero network latency**.
 
 ```java
-// That's it. Auto-downloads model, runs inference, returns typed results.
+// 3 lines. Auto-downloads model, runs inference, returns typed results.
 try (Model model = Model.preset("yolov8n")) {
     DetectionResult result = model.predict("photo.jpg");
     System.out.println(result.toJson());   // {"task":"detect","count":6,"boxes":[...]}
 }
 ```
 
-No Python installation. No model downloads. No config files. No `Map<String, Object>` casting.
-Just **production-ready ML in Java**.
+No Python installation. No model downloads. No config files. No `Map<String, Object>` casting. No microservices.
+**Just production-ready ML, running in-process, in Java.**
 
-### What makes it different?
+### The only Java framework that does ALL of this:
+
+<table>
+<tr><td>
+
+**Computer Vision**
+- YOLOv8 / YOLO11 / YOLO26 / RT-DETR
+- Detect, Segment, Classify, Pose, OBB
+- Train, Validate, Export (ONNX/TensorRT/CoreML)
+- Zero-copy GPU inference with `TensorBufferPool`
+
+</td><td>
+
+**Interactive Segmentation**
+- SAM 2 — point/box prompts + video tracking
+- SAM 3 — natural language ("find all cars")
+- CLIP-powered semantic understanding
+
+</td></tr>
+<tr><td>
+
+**Body & Face**
+- MediaPipe — hand tracking (21 pts)
+- Face mesh (478 pts), pose estimation (33 pts)
+
+</td><td>
+
+**Image Processing**
+- OpenCV — blur, edges, contours, morphology
+- Color conversion, thresholding, resize
+
+</td></tr>
+<tr><td>
+
+**Large Language Models**
+- HuggingFace model download & caching
+- Chat inference with `ChatMessage` API
+- LoRA/QLoRA fine-tuning + real-time callbacks
+- Async training, adapter merge, quantization
+
+</td></tr><td>
+
+**Production-Grade**
+- Full PyTorch — CPU / Apple MPS / NVIDIA CUDA / Multi-GPU
+- Single JVM process — no Python server needed
+- Thread-safe engine with `ReadWriteLock`
+- Auto-download Python, deps, and model weights
+
+</td></tr>
+</table>
+
+### Traditional Java ML vs jpy-ml
 
 | Traditional Java ML | jpy-ml |
 |---|---|
@@ -39,18 +102,7 @@ Just **production-ready ML in Java**.
 | Parse untyped JSON from model APIs | **Strongly typed** results: `DetectionResult`, `PoseResult`, ... |
 | Deploy 2 services (Java app + Python API) | **Single JVM process** — simpler ops, lower cost |
 | Limited to ONNX Runtime (CPU only) | **Full PyTorch** — CPU, Apple MPS, NVIDIA CUDA, Multi-GPU |
-| Only inference | **Inference + Training + Validation + Export** — full lifecycle |
-
-### What's included
-
-- **YOLO** — YOLOv8 / YOLO11 / YOLO26 / RT-DETR: detect, segment, classify, pose, OBB
-- **SAM 2** — interactive segmentation with point/box prompts + video object tracking
-- **SAM 3** — concept-level segmentation via natural language ("find all cars")
-- **MediaPipe** — hand tracking (21 pts), face mesh (478 pts), pose estimation (33 pts)
-- **OpenCV** — image processing: blur, edges, contours, morphology, color conversion
-- **ONNX Runtime** — CPU/GPU inference from exported models
-- **LLM** — HuggingFace model download, chat inference, LoRA/QLoRA fine-tuning with real-time callbacks
-- **Full Pipeline** — train on custom data, validate, export to ONNX/TensorRT/CoreML
+| Only inference | **Inference + Training + Validation + Export + LLM Fine-tuning** — full lifecycle |
 
 ---
 

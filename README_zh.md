@@ -1,10 +1,18 @@
+<div align="center">
+
 # jpy-ml
 
-<p align="center">
-  <strong>生产级 Java AI/ML 框架 — 6 行 Java 代码实现检测、分割、跟踪、分类</strong>
-</p>
+**有史以来最强大的 Java AI/ML 框架。**
 
-![index.png](docs%2Findex.png)
+*一个依赖。零 Python 安装。完整 PyTorch。生产即用。*
+
+检测 &middot; 分割 &middot; 跟踪 &middot; 分类 &middot; 姿态 &middot; 训练 &middot; 验证 &middot; 导出 &middot; LLM 微调 — **纯 Java 完成。**
+
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.javpower/jpy-ml.svg)](https://central.sonatype.com/artifact/io.github.javpower/jpy-ml)
+[![Tests](https://img.shields.io/badge/tests-110%20passed-brightgreen)]()
+[![Java](https://img.shields.io/badge/JDK-17-orange)]()
+[![Python](https://img.shields.io/badge/CPython-3.13-blue)]()
+[![License](https://img.shields.io/badge/license-Apache%202.0-green)]()
 
 <p align="center">
   <a href="README.md">English</a> &middot;
@@ -13,24 +21,79 @@
   <a href="#路线图">路线图</a>
 </p>
 
+![index.png](docs%2Findex.png)
+
+</div>
+
 ---
 
-**一个依赖。一行加载。一行推理。** jpy-ml 将完整的 Python ML 生态直接嵌入 JVM —
-YOLO、SAM、MediaPipe、OpenCV — 全部封装为简洁、类型安全的 Java API，零 Python 配置。
+## 为什么选择 jpy-ml？
+
+jpy-ml 将**整个 Python ML 生态直接嵌入 JVM** — YOLO、SAM、MediaPipe、OpenCV、HuggingFace LLM — 全部封装为简洁、类型安全的 Java API，**零 Python 安装、零 REST 服务、零网络延迟**。
 
 ```java
-// 就这么简单。自动下载模型，运行推理，返回类型化结果。
+// 3 行代码。自动下载模型，运行推理，返回类型化结果。
 try (Model model = Model.preset("yolov8n")) {
     DetectionResult result = model.predict("photo.jpg");
     System.out.println(result.toJson());   // {"task":"detect","count":6,"boxes":[...]}
 }
 ```
 
-无需安装 Python。无需手动下载模型。无需配置文件。无需 `Map<String, Object>` 强转。
-**Java 里直接跑生产级 ML。**
+无需安装 Python。无需手动下载模型。无需配置文件。无需 `Map<String, Object>` 强转。无需微服务。
+**生产级 ML，进程内运行，纯 Java 体验。**
 
+### 唯一一个能同时做到这些的 Java 框架：
 
-### 和传统方案的区别
+<table>
+<tr><td>
+
+**计算机视觉**
+- YOLOv8 / YOLO11 / YOLO26 / RT-DETR
+- 检测、分割、分类、姿态、旋转框（OBB）
+- 训练、验证、导出（ONNX/TensorRT/CoreML）
+- 零拷贝 GPU 推理（`TensorBufferPool`）
+
+</td><td>
+
+**交互式分割**
+- SAM 2 — 点/框提示 + 视频目标跟踪
+- SAM 3 — 自然语言分割（"找到所有车辆"）
+- CLIP 驱动的语义理解
+
+</td></tr>
+<tr><td>
+
+**人体与人脸**
+- MediaPipe — 手部追踪（21 关键点）
+- 面部网格（478 关键点）、姿态估计（33 关键点）
+
+</td><td>
+
+**图像处理**
+- OpenCV — 模糊、边缘检测、轮廓、形态学
+- 颜色转换、阈值处理、缩放
+
+</td></tr>
+<tr><td>
+
+**大语言模型**
+- HuggingFace 模型下载与缓存
+- 对话推理（`ChatMessage` API）
+- LoRA/QLoRA 微调 + 实时回调
+- 异步训练、适配器合并、量化
+
+</td></tr><td>
+
+**生产级架构**
+- 完整 PyTorch — CPU / Apple MPS / NVIDIA CUDA / 多卡
+- 单 JVM 进程 — 无需 Python 服务
+- 线程安全引擎（`ReadWriteLock`）
+- 自动下载 Python、依赖、模型权重
+
+</td></tr>
+</table>
+
+### 传统方案 vs jpy-ml
 
 | 传统 Java ML 方案 | jpy-ml |
 |---|---|
@@ -39,18 +102,7 @@ try (Model model = Model.preset("yolov8n")) {
 | 解析无类型的 JSON 结果 | **强类型**结果：`DetectionResult`、`PoseResult`... |
 | 部署两个服务（Java + Python API） | **单 JVM 进程** — 运维更简单，成本更低 |
 | 只能用 ONNX Runtime（仅 CPU） | **完整 PyTorch** — CPU、Apple MPS、NVIDIA CUDA、多卡 |
-| 只能推理 | **推理 + 训练 + 验证 + 导出** — 全生命周期 |
-
-### 内置引擎
-
-- **YOLO** — YOLOv8 / YOLO11 / YOLO26 / RT-DETR：检测、分割、分类、姿态、旋转框
-- **SAM 2** — 交互式分割（点/框提示）+ 视频目标跟踪
-- **SAM 3** — 自然语言概念级分割（"找到所有车辆"）
-- **MediaPipe** — 手部追踪（21 关键点）、面部网格（478 关键点）、姿态估计（33 关键点）
-- **OpenCV** — 图像处理：模糊、边缘检测、轮廓、形态学、色彩转换
-- **ONNX Runtime** — CPU/GPU 推理（导出模型）
-- **完整流水线** — 自定义数据训练、验证、导出为 ONNX/TensorRT/CoreML
-- **LLM** — HuggingFace 模型下载、对话推理、LoRA/QLoRA 微调（带实时回调）
+| 只能推理 | **推理 + 训练 + 验证 + 导出 + LLM 微调** — 全生命周期覆盖 |
 
 ---
 
