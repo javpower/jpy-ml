@@ -533,27 +533,13 @@ public class PythonRuntime {
         System.out.println("[jpy-ml] Installing bundled requirements with: " + pythonExe);
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    pythonExe.toString(), "-m", "pip", "install", "jep>=4.3.1", "numpy>=1.26"
-            ).redirectErrorStream(true);
+            // First try prebuilt wheels only (avoids source build issues on macOS
+            // where python-build-standalone lacks libpython3.12.dylib)
+            int exit = runPipInstall(pythonExe, "--only-binary", ":all:", "jep>=4.3.1", "numpy>=1.26");
+            if (exit == 0) return;
 
-            // Ensure JAVA_HOME is available for jep's native build
-            String javaHome = System.getProperty("java.home");
-            if (javaHome != null) {
-                pb.environment().put("JAVA_HOME", javaHome);
-                System.out.println("[jpy-ml] JAVA_HOME=" + javaHome);
-            }
-
-            Process p = pb.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println("[pip] " + line);
-                }
-            }
-
-            int exit = p.waitFor();
-            System.out.println("[jpy-ml] pip install exit code: " + exit);
+            System.out.println("[jpy-ml] Wheel-only install failed (exit=" + exit + "), retrying with source build...");
+            exit = runPipInstall(pythonExe, "jep>=4.3.1", "numpy>=1.26");
             if (exit != 0) {
                 throw new IOException("pip install failed (exit code " + exit + ")");
             }
@@ -561,6 +547,40 @@ public class PythonRuntime {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted during pip install", e);
         }
+    }
+
+    private static int runPipInstall(Path pythonExe, String... args) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(
+                pythonExe.toString(), "-m", "pip", "install"
+        ).redirectErrorStream(true);
+        for (String arg : args) pb.command().add(arg);
+
+        // Ensure JAVA_HOME for jep native build
+        String javaHome = System.getProperty("java.home");
+        if (javaHome != null) {
+            pb.environment().put("JAVA_HOME", javaHome);
+        }
+        // Add library search path for source builds (macOS/Linux)
+        if (pythonHome != null) {
+            Path libDir = pythonHome.resolve("lib");
+            if (Files.isDirectory(libDir)) {
+                pb.environment().merge("LDFLAGS", "-L" + libDir, (a, b) -> a + " " + b);
+                pb.environment().merge("CFLAGS", "-I" + pythonHome.resolve("include"),
+                        (a, b) -> a + " " + b);
+            }
+        }
+
+        System.out.println("[jpy-ml] Running: " + String.join(" ", pb.command()));
+        Process p = pb.start();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println("[pip] " + line);
+            }
+        }
+        int exit = p.waitFor();
+        System.out.println("[jpy-ml] pip exit code: " + exit);
+        return exit;
     }
 
     private static String buildDownloadUrl(String platformKey) {
