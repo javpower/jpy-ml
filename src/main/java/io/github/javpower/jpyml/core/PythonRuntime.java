@@ -407,6 +407,8 @@ public class PythonRuntime {
 
     /**
      * Find the jep native library (.jnilib/.so/.dll) installed in site-packages.
+     * Searches for exact names first, then falls back to pattern matching
+     * for ABI-tagged names like libjep.cpython-312-x86_64-linux-gnu.so.
      */
     public static Path findJepNativeLibrary() {
         if (jepNativeLib != null) return jepNativeLib;
@@ -417,16 +419,28 @@ public class PythonRuntime {
         Path jepDir = sp.resolve("jep");
         if (!Files.exists(jepDir)) return null;
 
-        String libName = isWindows() ? "jep.dll" :
-                System.getProperty("os.name").toLowerCase().contains("mac") ?
-                        "libjep.jnilib" : "libjep.so";
+        // Try exact known names
+        String[] exactNames = isWindows()
+                ? new String[]{"jep.dll"}
+                : System.getProperty("os.name").toLowerCase().contains("mac")
+                    ? new String[]{"libjep.jnilib"}
+                    : new String[]{"libjep.so", "libjep.jnilib"};
 
-        Path direct = jepDir.resolve(libName);
-        if (Files.exists(direct)) return direct;
+        for (String name : exactNames) {
+            Path direct = jepDir.resolve(name);
+            if (Files.exists(direct)) return direct;
+        }
 
+        // Fallback: search for any native library matching the pattern
+        // Handles ABI-tagged names: libjep.cpython-312-*.so, jep.dll, libjep.jnilib
         try (var stream = Files.walk(jepDir)) {
             return stream
-                    .filter(p -> p.getFileName().toString().equals(libName))
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String name = p.getFileName().toString();
+                        return name.startsWith("libjep.") && (name.endsWith(".so") || name.endsWith(".jnilib"))
+                                || name.equals("jep.dll");
+                    })
                     .findFirst()
                     .orElse(null);
         } catch (IOException e) {

@@ -39,9 +39,38 @@ jobs:
         echo "OS: ${{ matrix.os }}"
         echo "Java: $(java -version 2>&1 | head -1)"
         echo "Arch: $(uname -m 2>/dev/null || echo 'N/A')"
+        echo "JAVA_HOME: $JAVA_HOME"
         echo "PWD: $(pwd)"
         echo "Disk free:"
         df -h . 2>/dev/null || echo "N/A"
+
+    - name: Diagnose Python runtime on failure
+      if: failure()
+      shell: bash
+      run: |
+        echo "=== Python runtime ==="
+        ls -la ~/.jpy-ml/python/ 2>/dev/null || echo "No python dir"
+        echo "=== Platform dir ==="
+        PLATFORM=$(uname -m | sed 's/aarch64/arm64/' | sed 's/x86_64/x86_64/')
+        if [ "$(uname)" = "Darwin" ]; then
+          ls -la ~/.jpy-ml/python/macos-arm64/ 2>/dev/null || ls -la ~/.jpy-ml/python/macos-x86_64/ 2>/dev/null || echo "No macos dir"
+        elif [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
+          ls -la ~/.jpy-ml/python/linux-x86_64/ 2>/dev/null || ls -la ~/.jpy-ml/python/linux-aarch64/ 2>/dev/null || echo "No linux dir"
+        fi
+        echo "=== site-packages ==="
+        find ~/.jpy-ml/python -name "site-packages" -type d 2>/dev/null
+        echo "=== jep dir ==="
+        find ~/.jpy-ml/python -path "*/jep" -type d 2>/dev/null
+        echo "=== jep native libs ==="
+        find ~/.jpy-ml/python -path "*/jep/*.so" -o -path "*/jep/*.jnilib" -o -path "*/jep/*.dll" 2>/dev/null || echo "No native libs found"
+        echo "=== pip list ==="
+        PYTHON_EXE=$(find ~/.jpy-ml/python -name "python3" -o -name "python.exe" 2>/dev/null | head -1)
+        if [ -n "$PYTHON_EXE" ]; then
+          echo "Using: $PYTHON_EXE"
+          "$PYTHON_EXE" -m pip list 2>/dev/null || echo "pip list failed"
+        else
+          echo "No python executable found"
+        fi
 
     - name: Cache Python runtime
       uses: actions/cache@v4
