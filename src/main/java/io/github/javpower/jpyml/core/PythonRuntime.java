@@ -532,12 +532,17 @@ public class PythonRuntime {
         Path pythonExe = getPythonExecutable();
         System.out.println("[jpy-ml] Installing bundled requirements with: " + pythonExe);
 
-        // Install directly by package name instead of temp file to avoid
-        // classpath resource loading issues on different platforms
         try {
             ProcessBuilder pb = new ProcessBuilder(
                     pythonExe.toString(), "-m", "pip", "install", "jep>=4.3.1", "numpy>=1.26"
             ).redirectErrorStream(true);
+
+            // Ensure JAVA_HOME is available for jep's native build
+            String javaHome = System.getProperty("java.home");
+            if (javaHome != null) {
+                pb.environment().put("JAVA_HOME", javaHome);
+                System.out.println("[jpy-ml] JAVA_HOME=" + javaHome);
+            }
 
             Process p = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
