@@ -543,6 +543,7 @@ public class PythonRuntime {
             if (exit != 0) {
                 throw new IOException("pip install failed (exit code " + exit + ")");
             }
+            fixMacOsJepRpath();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted during pip install", e);
@@ -1015,5 +1016,63 @@ public class PythonRuntime {
 
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().contains("win");
+    }
+
+    private static boolean isMac() {
+        return System.getProperty("os.name").toLowerCase().contains("mac");
+    }
+
+    /**
+     * On macOS, fix the dynamic library reference in libjep.jnilib after a source build.
+     * python-build-standalone extensions may hardcode /install/lib/libpython3.12.dylib
+     * which doesn't exist at the actual install location.
+     */
+    private static void fixMacOsJepRpath() {
+        if (!isMac() || pythonHome == null) return;
+
+        Path jepLib = findJepNativeLibrary();
+        if (jepLib == null || !Files.exists(jepLib)) return;
+
+        Path libDir = pythonHome.resolve("lib");
+        Path libPython = libDir.resolve("libpython3.12.dylib");
+        if (!Files.exists(libPython)) return;
+
+        try {
+            ProcessBuilder otoolPb = new ProcessBuilder("otool", "-L", jepLib.toString())
+                    .redirectErrorStream(true);
+            Process otoolProc = otoolPb.start();
+            String otoolOutput;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(otoolProc.getInputStream()))) {
+                otoolOutput = reader.lines().collect(java.util.stream.Collectors.joining("\n"));
+            }
+            otoolProc.waitFor();
+
+            if (!otoolOutput.contains("/install/lib/")) return;
+
+            System.out.println("[jpy-ml] Fixing macOS rpath for jep native library...");
+
+            ProcessBuilder fixPb = new ProcessBuilder(
+                    "install_name_tool", "-change",
+                    "/install/lib/libpython3.12.dylib",
+                    libPython.toString(),
+                    jepLib.toString()
+            ).redirectErrorStream(true);
+            Process fixProc = fixPb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(fixProc.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("[jpy-ml] " + line);
+                }
+            }
+            int exit = fixProc.waitFor();
+
+            if (exit == 0) {
+                System.out.println("[jpy-ml] Successfully fixed rpath for " + jepLib.getFileName());
+            } else {
+                System.err.println("[jpy-ml] install_name_tool failed (exit=" + exit + ")");
+            }
+        } catch (Exception e) {
+            System.err.println("[jpy-ml] Failed to fix macOS rpath: " + e.getMessage());
+        }
     }
 }
