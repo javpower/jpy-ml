@@ -150,8 +150,19 @@ public class PythonRuntime {
             log.info("Using cached Python runtime at {}", pythonHome);
         }
 
+        // Ensure packages are installed even if Python was cached without them
         sitePackagesPath = computeSitePackages();
         jepNativeLib = findJepNativeLibrary();
+        if (jepNativeLib == null || !Files.exists(jepNativeLib)) {
+            log.info("Jep not found in cached runtime, installing packages...");
+            installBundledRequirements();
+            sitePackagesPath = computeSitePackages();
+            jepNativeLib = findJepNativeLibrary();
+            if (jepNativeLib == null || !Files.exists(jepNativeLib)) {
+                throw new IOException("Jep native library not found after installation. " +
+                        "Expected at: " + computeSitePackages().resolve("jep"));
+            }
+        }
 
         initialized.set(true);
     }

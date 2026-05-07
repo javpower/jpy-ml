@@ -46,12 +46,8 @@ jobs:
     - name: Cache Python runtime
       uses: actions/cache@v4
       with:
-        path: |
-          ~/.jpy-ml/python
-          ~/.jpy-ml/downloads
-        key: jpy-ml-python-${{ matrix.os }}-${{ hashFiles('src/main/resources/requirements.txt') }}
-        restore-keys: |
-          jpy-ml-python-${{ matrix.os }}-
+        path: ~/.jpy-ml/python
+        key: jpy-ml-python-v2-${{ matrix.os }}-${{ hashFiles('src/main/resources/requirements.txt') }}
 
     - name: Run AutoInstallTest
       run: mvn -B test -Dtest=AutoInstallTest
