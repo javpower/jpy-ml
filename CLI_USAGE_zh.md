@@ -246,6 +246,28 @@ java -jar target/jpy-ml-cli.jar --help
 ./bin/jpy-ml list-models
 ```
 
+#### 17. generate - FLUX.1 图像生成
+
+```bash
+# 快速生成（Schnell，4步）
+./bin/jpy-ml generate -p "A cat in space" -o cat.png
+
+# 高质量生成（Dev，20步）
+./bin/jpy-ml generate -m dev -p "A beautiful sunset over mountains" -o sunset.png
+
+# 指定尺寸和步数
+./bin/jpy-ml generate -p "A futuristic city" -o city.png \
+    --width 1920 --height 1080 \
+    --steps 30 --guidance 7.5
+
+# 使用固定种子（可复现）
+./bin/jpy-ml generate -p "A red car" -o car.png --seed 42
+
+# 使用负面提示
+./bin/jpy-ml generate -p "A portrait" -o portrait.png \
+    --negative "blurry, low quality"
+```
+
 ## 通用选项
 
 所有命令都支持以下通用选项：
@@ -301,6 +323,23 @@ java -jar target/jpy-ml-cli.jar --help
 
 # 视频文件处理
 ./bin/jpy-ml video -m yolov8n.pt -s surveillance.mp4 --max-frames 1000
+```
+
+### 场景 5：AI 图像生成
+
+```bash
+# 快速生成（Schnell，约2-5秒）
+./bin/jpy-ml generate -p "A cute cat wearing a space helmet" -o cat.png
+
+# 高质量生成（Dev，约10-20秒）
+./bin/jpy-ml generate -m dev \
+    -p "A beautiful sunset over mountains, oil painting style" \
+    -o sunset.png \
+    --steps 30 --guidance 7.5
+
+# 批量生成不同风格
+./bin/jpy-ml generate -p "A red car" -o car1.png --seed 42
+./bin/jpy-ml generate -p "A red car, watercolor" -o car2.png --seed 42
 ```
 
 ## 故障排除
