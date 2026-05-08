@@ -52,7 +52,7 @@ jobs:
       run: |
         jlink \
           --module-path "$JAVA_HOME/jmods" \
-          --add-modules java.base,java.desktop,java.logging,java.management,java.naming,java.net.http,java.prefs,java.sql,java.xml,java.security.jgss,jdk.crypto.cryptoki,jdk.unsupported \
+          --add-modules java.base,java.desktop,java.logging,java.management,java.naming,java.net.http,java.prefs,java.sql,java.xml,java.security.jgss,jdk.crypto.cryptoki,jdk.unsupported,jdk.compiler \
           --strip-debug \
           --compress=2 \
           --output jre-minimal
