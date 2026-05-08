@@ -4,6 +4,7 @@ set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 JAR="$DIR/lib/jpy-ml-cli.jar"
+JRE="$DIR/../jre/bin/java"
 
 if [ ! -f "$JAR" ]; then
     echo "Error: $JAR not found" >&2
@@ -11,4 +12,16 @@ if [ ! -f "$JAR" ]; then
     exit 1
 fi
 
-exec java -jar "$JAR" "$@"
+# 优先使用打包的 JRE
+if [ -f "$JRE" ]; then
+    exec "$JRE" -jar "$JAR" "$@"
+fi
+
+# 否则使用系统的 java
+if command -v java &> /dev/null; then
+    exec java -jar "$JAR" "$@"
+fi
+
+echo "Error: Java not found" >&2
+echo "Install JDK 17 or use the bundled package" >&2
+exit 1
