@@ -179,6 +179,16 @@ try (Model model = Model.preset("yolov8n")) {
 - **生成配置** — temperature、top-p、max tokens、repetition penalty
 - **自动依赖安装** — transformers、peft、trl、accelerate 首次使用时自动安装
 
+### FLUX.1 — AI 图像生成
+- **FluxModel** — 文本生成图像的统一入口
+- **FLUX.1 Dev** — 高质量版本，20 步推理，需要 HuggingFace 授权
+- **FLUX.1 Schnell** — 快速版本，4 步推理，Apache 2.0 许可
+- **文本到图像** — `flux.generate("A cat in space", "output.png")`
+- **图像到图像** — `flux.img2img(prompt, inputPath, outputPath, config)`
+- **自定义配置** — 宽度、高度、步数、引导强度、种子
+- **自动设备检测** — CPU / Apple MPS / NVIDIA CUDA
+- **按需依赖** — 首次使用时自动安装 diffusers、transformers 等
+
 ---
 
 ## Maven
@@ -318,6 +328,12 @@ mvn package -Pcli -DskipTests
 
 # 下载模型
 ./bin/jpy-ml download -n yolov8n.pt
+
+# FLUX.1 图像生成
+./bin/jpy-ml generate -p "A cat in space" -o cat.png
+
+# FLUX.1 高质量生成
+./bin/jpy-ml generate -m dev -p "A beautiful sunset" -o sunset.png --steps 30
 ```
 
 更多 CLI 用法请参考 [CLI 使用指南](CLI_USAGE_zh.md)。
@@ -634,6 +650,37 @@ String mergedPath = LLMModel.mergeAdapter(
 也支持 instruction 格式：
 ```json
 {"instruction": "翻译成英文", "input": "你好", "output": "Hello"}
+```
+
+### FLUX.1 — 文本生成图像
+
+```java
+// 快速生成（Schnell，4 步）
+try (FluxModel flux = new FluxModel("black-forest-labs/FLUX.1-schnell")) {
+    FluxResult result = flux.generate("A cat in space", "cat.png");
+    System.out.println("输出: " + result.getFirstOutputPath());
+    System.out.println("耗时: " + result.getElapsedSeconds() + "s");
+}
+
+// 高质量生成（Dev，20 步）
+FluxConfig config = FluxConfig.dev()
+    .width(1920)
+    .height(1080)
+    .steps(30)
+    .guidance(7.5f)
+    .seed(42);
+
+try (FluxModel flux = new FluxModel("black-forest-labs/FLUX.1-dev")) {
+    FluxResult result = flux.generate("A beautiful sunset", "sunset.png", config);
+}
+
+// 图像到图像
+try (FluxModel flux = new FluxModel("black-forest-labs/FLUX.1-schnell")) {
+    FluxResult result = flux.img2img(
+        "Oil painting style", "input.png", "output.png",
+        new FluxConfig().steps(10)
+    );
+}
 ```
 
 ---

@@ -37,6 +37,9 @@ runs/
 # Test artifacts
 bus.jpg
 test_bus.jpg
+face.jpeg
+sam3_text_result.jpg
+solutions_ci_demo.mp4
 hs_err_pid*.log
 replay_pid*.log
 core.*
