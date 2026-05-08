@@ -34,6 +34,16 @@ jobs:
         distribution: temurin
         cache: maven
 
+    - name: Extract version
+      id: get_version
+      shell: bash
+      run: |
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=dev" >> $GITHUB_OUTPUT
+        fi
+
     - name: Build CLI fat jar
       run: mvn -B package -Pcli -DskipTests
 
@@ -51,7 +61,7 @@ jobs:
       if: runner.os != 'Windows'
       shell: bash
       run: |
-        VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION=${{ steps.get_version.outputs.VERSION }}
         DIST_DIR=jpy-ml-${{ matrix.platform }}-${{ matrix.arch }}
         mkdir -p $DIST_DIR/bin $DIST_DIR/lib $DIST_DIR/jre
         cp target/jpy-ml-cli.jar $DIST_DIR/lib/
@@ -70,7 +80,7 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        $VERSION = $env:GITHUB_REF -replace 'refs/tags/v',''
+        $VERSION = "${{ steps.get_version.outputs.VERSION }}"
         $DIST_DIR = "jpy-ml-${{ matrix.platform }}-${{ matrix.arch }}"
         New-Item -ItemType Directory -Force -Path "$DIST_DIR\bin","$DIST_DIR\lib","$DIST_DIR\jre"
         Copy-Item target\jpy-ml-cli.jar "$DIST_DIR\lib\"
