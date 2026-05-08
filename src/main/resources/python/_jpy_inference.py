@@ -2,8 +2,15 @@
 from ultralytics import YOLO, RTDETR, SAM
 import numpy as np
 import threading
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 _jpy_inference_lock = threading.Lock()
+
+_jpy_http_session = requests.Session()
+_jpy_http_session.mount('https://', HTTPAdapter(max_retries=Retry(total=3, backoff_factor=1)))
+_jpy_http_session.mount('http://', HTTPAdapter(max_retries=Retry(total=3, backoff_factor=1)))
 
 def jpy_load_model(model_path, task=None):
     """Load a model. If task is specified, force that task type regardless of filename."""
@@ -163,9 +170,7 @@ def _decode_source(src):
         return src
     if isinstance(src, str):
         if src.startswith(('http://', 'https://')):
-            import urllib.request
-            resp = urllib.request.urlopen(src)
-            arr = np.asarray(bytearray(resp.read()), dtype=np.uint8)
+            arr = np.asarray(bytearray(_jpy_http_session.get(src, timeout=30).content), dtype=np.uint8)
             return cv2.imdecode(arr, cv2.IMREAD_COLOR)
         return cv2.imread(src)
     # bytes-like (Java byte[] from Jep)
