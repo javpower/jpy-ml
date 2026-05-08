@@ -1,16 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - '**.mp4'
-      - '**.jpg'
-      - '**.jpeg'
-      - '**.png'
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
