@@ -47,6 +47,7 @@ Thumbs.db
 
 # Maven
 *.log
+dependency-reduced-pom.xml
 
 # Build
 *.jar

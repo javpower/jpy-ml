@@ -1,0 +1,14 @@
+#!/bin/bash
+# jpy-ml CLI launcher
+set -e
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+JAR="$DIR/lib/jpy-ml-cli.jar"
+
+if [ ! -f "$JAR" ]; then
+    echo "Error: $JAR not found" >&2
+    echo "Build with: mvn package -Pcli -DskipTests" >&2
+    exit 1
+fi
+
+exec java -jar "$JAR" "$@"

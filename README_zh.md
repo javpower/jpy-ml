@@ -270,6 +270,60 @@ mvn clean test
 
 ---
 
+## CLI 使用
+
+jpy-ml 提供了命令行界面，让您无需编写 Java 代码即可使用各种 ML 功能。
+
+### 构建 CLI
+
+```bash
+mvn package -Pcli -DskipTests
+```
+
+### 使用 CLI
+
+```bash
+# 查看帮助
+./bin/jpy-ml --help
+
+# 目标检测
+./bin/jpy-ml predict -m yolov8n.pt -s photo.jpg
+
+# 图像分类
+./bin/jpy-ml classify -m yolov8n-cls.pt -s photo.jpg
+
+# 姿态估计
+./bin/jpy-ml pose -m yolov8n-pose.pt -s person.jpg
+
+# SAM 分割
+./bin/jpy-ml segment -m sam2.1_t.pt -i photo.jpg -p 320,240
+
+# YOLO 模型训练
+./bin/jpy-ml yolo-train -m yolov8n.pt -d coco128.yaml --epochs 50
+
+# 模型验证
+./bin/jpy-ml validate -m yolov8n.pt -d coco128.yaml
+
+# 模型导出
+./bin/jpy-ml export -m yolov8n.pt -f onnx
+
+# LLM 对话
+./bin/jpy-ml chat -m Qwen/Qwen2.5-0.5B-Instruct --message "你好"
+
+# LLM 微调
+./bin/jpy-ml train -m Qwen/Qwen2.5-0.5B-Instruct -d training_data.jsonl
+
+# 列出可用模型
+./bin/jpy-ml list-models
+
+# 下载模型
+./bin/jpy-ml download -n yolov8n.pt
+```
+
+更多 CLI 用法请参考 [CLI 使用指南](CLI_USAGE_zh.md)。
+
+---
+
 ## API 用法
 
 ### 模型加载 — 指定任务类型和设备
