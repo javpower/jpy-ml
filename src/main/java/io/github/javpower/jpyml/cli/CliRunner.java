@@ -28,6 +28,7 @@ import java.nio.file.Path;
                 MergeAdapterCommand.class,
                 DownloadModelCommand.class,
                 ListModelsCommand.class,
+                GenerateCommand.class,
         },
         mixinStandardHelpOptions = true
 )

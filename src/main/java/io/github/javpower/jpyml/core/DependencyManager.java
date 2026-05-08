@@ -45,6 +45,14 @@ public class DependencyManager {
         GROUPS.put("mediapipe", new String[][]{
                 {"mediapipe", "mediapipe>=0.10.0"}
         });
+        GROUPS.put("flux", new String[][]{
+                {"diffusers", "diffusers>=0.30.0"},
+                {"transformers", "transformers>=4.40.0"},
+                {"accelerate", "accelerate>=0.30.0"},
+                {"sentencepiece", "sentencepiece>=0.2.0"},
+                {"protobuf", "protobuf>=4.25.0"},
+                {"safetensors", "safetensors>=0.4.0"}
+        });
     }
 
     private static final Set<String> verified = ConcurrentHashMap.newKeySet();
