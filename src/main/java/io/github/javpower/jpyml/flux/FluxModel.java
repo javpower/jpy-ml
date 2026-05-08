@@ -1,5 +1,6 @@
 package io.github.javpower.jpyml.flux;
 
+import io.github.javpower.jpyml.core.DependencyManager;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.core.PythonScriptLoader;
 import org.slf4j.Logger;
@@ -49,6 +50,10 @@ public class FluxModel implements AutoCloseable {
      */
     public void load() {
         if (loaded) return;
+
+        // 按需安装 FLUX 依赖
+        DependencyManager.ensure("flux");
+
         PythonEngine engine = PythonEngine.getInstance();
         PythonScriptLoader.ensureLoaded(engine, "_jpy_flux.py");
 

@@ -11,24 +11,6 @@ _jpy_flux_cache = {}
 _jpy_flux_lock = threading.Lock()
 
 
-def _ensure_flux_deps():
-    """Ensure FLUX dependencies are installed."""
-    try:
-        import diffusers
-    except ImportError:
-        import subprocess
-        import sys
-        packages = [
-            "diffusers>=0.30.0",
-            "transformers>=4.40.0",
-            "accelerate>=0.30.0",
-            "sentencepiece>=0.2.0",
-            "protobuf>=4.25.0",
-            "safetensors>=0.4.0",
-        ]
-        subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
-
-
 def _detect_device(device):
     if device == "auto" or device is None:
         if torch.cuda.is_available():
@@ -62,7 +44,6 @@ def jpy_flux_load(model_id, device="auto", dtype="auto", variant=None):
     Returns:
         dict with model info.
     """
-    _ensure_flux_deps()
     from diffusers import FluxPipeline
 
     device = _detect_device(device)
