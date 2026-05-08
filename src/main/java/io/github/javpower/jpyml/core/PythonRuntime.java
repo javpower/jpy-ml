@@ -563,7 +563,8 @@ public class PythonRuntime {
         for (String arg : args) pb.command().add(arg);
 
         // Ensure JAVA_HOME for jep native build
-        String javaHome = System.getProperty("java.home");
+        // Try to find a JDK with javac (not just JRE)
+        String javaHome = findJdkHome();
         if (javaHome != null) {
             pb.environment().put("JAVA_HOME", javaHome);
         }
@@ -616,6 +617,57 @@ public class PythonRuntime {
         }
 
         return baseUrl + releaseTag + "/" + fileName;
+    }
+
+    /**
+     * Find JDK home with javac compiler.
+     * Checks: 1) JAVA_HOME env var, 2) java.home system property, 3) common paths
+     */
+    private static String findJdkHome() {
+        // 1. Check JAVA_HOME environment variable
+        String envHome = System.getenv("JAVA_HOME");
+        if (envHome != null && hasJavac(envHome)) {
+            return envHome;
+        }
+
+        // 2. Check java.home system property (might be JRE)
+        String sysHome = System.getProperty("java.home");
+        if (sysHome != null && hasJavac(sysHome)) {
+            return sysHome;
+        }
+
+        // 3. Try parent of java.home (e.g., /path/jre -> /path)
+        if (sysHome != null) {
+            Path parent = Path.of(sysHome).getParent();
+            if (parent != null && hasJavac(parent.toString())) {
+                return parent.toString();
+            }
+        }
+
+        // 4. Check common JDK locations
+        String[] commonPaths = {
+                "/usr/lib/jvm/temurin-17-jdk-amd64",
+                "/usr/lib/jvm/java-17-openjdk-amd64",
+                "/usr/lib/jvm/adoptium-17",
+                "/opt/homebrew/opt/openjdk@17",
+                "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
+        };
+        for (String path : commonPaths) {
+            if (hasJavac(path)) {
+                return path;
+            }
+        }
+
+        // 5. Fallback to java.home (javac might not be available)
+        return sysHome;
+    }
+
+    private static boolean hasJavac(String javaHome) {
+        Path javac = Path.of(javaHome, "bin", "javac");
+        if (Files.isExecutable(javac)) return true;
+        // Windows
+        Path javacExe = Path.of(javaHome, "bin", "javac.exe");
+        return Files.isExecutable(javacExe);
     }
 
     private static void downloadFile(String url, Path target) throws IOException {
