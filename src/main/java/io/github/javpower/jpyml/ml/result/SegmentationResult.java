@@ -11,7 +11,9 @@ public class SegmentationResult implements InferenceResult {
     private final List<ClassPrediction> boxes;
     private final List<Mask> masks;
     public SegmentationResult(String sp, int w, int h, InferenceSpeed s, Map<Integer,String> cn, List<ClassPrediction> b, List<Mask> m) {
-        sourcePath=sp; origWidth=w; origHeight=h; speed=s; classNames=cn; boxes=b; masks=m;
+        sourcePath=sp; origWidth=w; origHeight=h; speed=s; classNames=cn;
+        boxes = Collections.unmodifiableList(new ArrayList<>(b));
+        masks = Collections.unmodifiableList(new ArrayList<>(m));
     }
     @Override public String getSourcePath() { return sourcePath; }
     @Override public int getOriginalWidth() { return origWidth; }

@@ -43,7 +43,7 @@ public class SAM3Model implements AutoCloseable {
     private final String varName;
     private final String modelPath;
     private final PythonEngine engine;
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     /**
      * Load a SAM 3 model.
@@ -147,12 +147,7 @@ public class SAM3Model implements AutoCloseable {
         for (Map<String, Object> rm : rawMasks) {
             @SuppressWarnings("unchecked")
             List<List<Number>> polygon = (List<List<Number>>) rm.getOrDefault("polygon", List.of());
-            float[][] polyArray = new float[polygon.size()][2];
-            for (int i = 0; i < polygon.size(); i++) {
-                polyArray[i][0] = polygon.get(i).get(0).floatValue();
-                polyArray[i][1] = polygon.get(i).get(1).floatValue();
-            }
-            masks.add(new Mask(polyArray));
+            masks.add(new Mask(ResultParseUtil.parsePolygon(polygon)));
             scores.add(((Number) rm.getOrDefault("score", 0)).floatValue());
             classIds.add(((Number) rm.getOrDefault("class_id", 0)).intValue());
         }

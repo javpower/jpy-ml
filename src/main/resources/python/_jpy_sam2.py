@@ -1,38 +1,25 @@
 """SAM 2 (Segment Anything Model 2) integration for jpy-ml."""
 
 from ultralytics import SAM
+import threading
 
 # Global model storage
 _jpy_sam2_models = {}
+_jpy_sam2_lock = threading.Lock()
 
 
 def jpy_sam2_load(model_path, var_name):
-    """Load a SAM 2 model.
-
-    Args:
-        model_path: Path to the SAM 2 model file (e.g., 'sam2_b.pt')
-        var_name: Variable name for storage
-
-    Returns:
-        dict with model info
-    """
+    """Load a SAM 2 model."""
     model = SAM(model_path)
-    _jpy_sam2_models[var_name] = model
+    with _jpy_sam2_lock:
+        _jpy_sam2_models[var_name] = model
     return {'var': var_name, 'task': 'segment'}
 
 
 def jpy_sam2_predict(var_name, image_path, prompts):
-    """Run SAM 2 prediction with the given prompts.
-
-    Args:
-        var_name: Variable name of the loaded model
-        image_path: Path to the image file
-        prompts: List of prompt dicts with 'type' key ('point', 'box', 'text')
-
-    Returns:
-        dict with masks and scores
-    """
-    model = _jpy_sam2_models[var_name]
+    """Run SAM 2 prediction with the given prompts."""
+    with _jpy_sam2_lock:
+        model = _jpy_sam2_models[var_name]
 
     # Convert prompts to Python dicts (handles Java Maps from Jep)
     prompts = [dict(p) for p in prompts]

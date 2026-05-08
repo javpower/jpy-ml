@@ -66,7 +66,7 @@ public class Model implements AutoCloseable {
     private final Map<Integer, String> classNames;
     private final ModelInfo modelInfo;
     private final PythonEngine engine;
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     // Training state for cancellation and real-time progress
     private static final ExecutorService trainingExecutor =
@@ -449,14 +449,7 @@ public class Model implements AutoCloseable {
         if (rawMasks != null) {
             for (Map<String, Object> m : rawMasks) {
                 List<List<Number>> poly = (List<List<Number>>) m.get("polygon");
-                float[][] polygon = new float[poly != null ? poly.size() : 0][2];
-                if (poly != null) {
-                    for (int i = 0; i < poly.size(); i++) {
-                        polygon[i][0] = poly.get(i).get(0).floatValue();
-                        polygon[i][1] = poly.get(i).get(1).floatValue();
-                    }
-                }
-                masks.add(new Mask(polygon));
+                masks.add(new Mask(ResultParseUtil.parsePolygon(poly)));
             }
         }
         return new SegmentationResult(sp, w, h, speed, names, boxes, masks);
@@ -548,13 +541,10 @@ public class Model implements AutoCloseable {
             // Pass kwargs via Jep's safe Java-to-Python conversion
             engine.put(rv + "_batch_kwargs", kwargs);
 
-            // Run batch predict in Python
+            // Run batch predict in Python using native batch inference
             engine.put(rv + "_task", taskType.getKey());
             engine.exec(
-                    rv + "_batch = []\n" +
-                    "for " + rv + "_src in " + rv + "_batch_src:\n" +
-                    "    for " + rv + "_raw in " + mv + "(" + rv + "_src, **" + rv + "_batch_kwargs):\n" +
-                    "        " + rv + "_batch.append(jpy_extract_result(" + rv + "_raw, " + rv + "_task))\n"
+                    rv + "_batch = jpy_batch_predict(" + mv + ", " + rv + "_batch_src, " + rv + "_task, " + rv + "_batch_kwargs)"
             );
 
             @SuppressWarnings("unchecked")
@@ -569,6 +559,82 @@ public class Model implements AutoCloseable {
             return results;
         } catch (Exception e) {
             throw new InferenceException("Batch prediction failed", e);
+        }
+    }
+
+    // ==================== Batch Prediction (byte[] / BufferedImage) ====================
+
+    /**
+     * Batch prediction on multiple raw image byte arrays.
+     * Images are decoded and processed together for GPU-batched inference.
+     *
+     * @param imageDataList list of raw image bytes (JPEG, PNG, etc.)
+     * @return list of inference results, one per image
+     * @throws InferenceException if prediction fails
+     */
+    public List<InferenceResult> predictBytesBatch(List<byte[]> imageDataList) throws InferenceException {
+        return predictBytesBatch(imageDataList, new ModelConfig());
+    }
+
+    public List<InferenceResult> predictBytesBatch(List<byte[]> imageDataList, ModelConfig config) throws InferenceException {
+        ensureOpen();
+        if (imageDataList == null || imageDataList.isEmpty()) {
+            throw new InferenceException("Image data list must not be empty");
+        }
+        try {
+            String mv = "_jpy_mv" + id;
+            String rv = "_jpy_pr" + id;
+            Map<String, Object> kwargs = config.toPythonKwargs();
+
+            engine.put(rv + "_batch_bytes", imageDataList);
+            engine.put(rv + "_batch_kwargs", kwargs);
+            engine.put(rv + "_task", taskType.getKey());
+
+            engine.exec(
+                    rv + "_batch_imgs = [jpy_decode_image(b) for b in " + rv + "_batch_bytes]\n" +
+                    rv + "_batch = jpy_batch_predict(" + mv + ", " + rv + "_batch_imgs, " + rv + "_task, " + rv + "_batch_kwargs)"
+            );
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> batchData = engine.eval(rv + "_batch");
+
+            List<InferenceResult> results = new ArrayList<>();
+            if (batchData != null) {
+                for (Map<String, Object> data : batchData) {
+                    results.add(buildResult(data));
+                }
+            }
+            return results;
+        } catch (Exception e) {
+            throw new InferenceException("Batch prediction (bytes) failed", e);
+        }
+    }
+
+    /**
+     * Batch prediction on multiple BufferedImages.
+     * Images are converted to byte arrays and processed together for GPU-batched inference.
+     *
+     * @param images list of BufferedImage objects
+     * @return list of inference results, one per image
+     * @throws InferenceException if prediction fails
+     */
+    public List<InferenceResult> predictImagesBatch(List<BufferedImage> images) throws InferenceException {
+        return predictImagesBatch(images, new ModelConfig());
+    }
+
+    public List<InferenceResult> predictImagesBatch(List<BufferedImage> images, ModelConfig config) throws InferenceException {
+        ensureOpen();
+        if (images == null || images.isEmpty()) {
+            throw new InferenceException("Image list must not be empty");
+        }
+        try {
+            List<byte[]> byteList = new ArrayList<>();
+            for (BufferedImage img : images) {
+                byteList.add(bufferedImageToBytes(img));
+            }
+            return predictBytesBatch(byteList, config);
+        } catch (IOException e) {
+            throw new InferenceException("Failed to convert BufferedImages", e);
         }
     }
 
@@ -850,6 +916,15 @@ public class Model implements AutoCloseable {
         streaming.set(false);
     }
 
+    /**
+     * Shut down the training executor. Call this when the application is done
+     * with all training operations. After calling this, trainAsync() will throw
+     * RejectedExecutionException. Typically called from a shutdown hook.
+     */
+    public static void shutdownTraining() {
+        trainingExecutor.shutdown();
+    }
+
     public boolean isStreaming() {
         return streaming.get();
     }
@@ -1107,6 +1182,12 @@ public class Model implements AutoCloseable {
     @Override
     public void close() {
         if (!closed) {
+            stopStream();
+            int waitMs = 0;
+            while (streaming.get() && waitMs < 2000) {
+                try { Thread.sleep(50); } catch (InterruptedException e) { break; }
+                waitMs += 50;
+            }
             closed = true;
             log.info("Closing model: {}", modelPath);
             try {

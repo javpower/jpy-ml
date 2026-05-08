@@ -2,21 +2,15 @@
 
 from ultralytics.models.sam import SAM
 from ultralytics.models.sam.predict import SAM3SemanticPredictor
+import threading
 
 # Global model/predictor storage
 _jpy_sam3_predictors = {}
+_jpy_sam3_lock = threading.Lock()
 
 
 def jpy_sam3_load(model_path, var_name):
-    """Load a SAM 3 model with SAM3SemanticPredictor.
-
-    Args:
-        model_path: Path to the SAM 3 model file
-        var_name: Variable name for storage
-
-    Returns:
-        dict with model info
-    """
+    """Load a SAM 3 model with SAM3SemanticPredictor."""
     overrides = dict(
         conf=0.25,
         imgsz=1024,
@@ -26,28 +20,21 @@ def jpy_sam3_load(model_path, var_name):
         save=False,
     )
     predictor = SAM3SemanticPredictor(overrides=overrides)
-    _jpy_sam3_predictors[var_name] = {
-        'predictor': predictor,
-        'model_path': model_path,
-    }
+    with _jpy_sam3_lock:
+        _jpy_sam3_predictors[var_name] = {
+            'predictor': predictor,
+            'model_path': model_path,
+        }
     return {'var': var_name, 'task': 'segment'}
 
 
 def jpy_sam3_predict_text(var_name, image_path, text_prompts):
-    """Run SAM 3 prediction with text prompts.
-
-    Args:
-        var_name: Variable name of the loaded model
-        image_path: Path to the image file
-        text_prompts: List of text prompts (e.g., ['person', 'car'])
-
-    Returns:
-        dict with masks and scores
-    """
+    """Run SAM 3 prediction with text prompts."""
     import cv2
     import numpy as np
 
-    entry = _jpy_sam3_predictors[var_name]
+    with _jpy_sam3_lock:
+        entry = _jpy_sam3_predictors[var_name]
     predictor = entry['predictor']
 
     # Read image as BGR numpy array
@@ -103,7 +90,8 @@ def jpy_sam3_predict_exemplar(var_name, image_path, exemplar_path, exemplar_box)
     import cv2
     import numpy as np
 
-    entry = _jpy_sam3_predictors[var_name]
+    with _jpy_sam3_lock:
+        entry = _jpy_sam3_predictors[var_name]
     predictor = entry['predictor']
 
     # 1. Read and segment the exemplar image

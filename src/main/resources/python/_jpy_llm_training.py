@@ -167,15 +167,8 @@ def jpy_llm_train(model_path, dataset_path, lora_kwargs, train_kwargs,
         model_kwargs["quantization_config"] = bnb_config
 
     # Suppress harmless JVM error from safetensors Rust fork on macOS
-    old_stderr = os.dup(2)
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    os.dup2(devnull_fd, 2)
-    os.close(devnull_fd)
-    try:
+    with suppress_stderr_fd():
         model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
-    finally:
-        os.dup2(old_stderr, 2)
-        os.close(old_stderr)
 
     # Move model to MPS device after loading
     if device == "mps":

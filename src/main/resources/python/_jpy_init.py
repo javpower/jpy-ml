@@ -14,9 +14,11 @@ except ImportError:
 
 import numpy as np
 import json
+import threading
 
 _jpy_models = {}
 _jpy_model_counter = 0
+_jpy_init_lock = threading.Lock()
 
 def jpy_version():
     return {'ultralytics': ultralytics.__version__, 'python': sys.version}

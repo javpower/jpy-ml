@@ -12,7 +12,7 @@ public class DetectionResult implements InferenceResult {
     private final List<ClassPrediction> boxes;
     public DetectionResult(String sourcePath, int origWidth, int origHeight, InferenceSpeed speed, Map<Integer, String> classNames, List<ClassPrediction> boxes) {
         this.sourcePath = sourcePath; this.origWidth = origWidth; this.origHeight = origHeight;
-        this.speed = speed; this.classNames = classNames; this.boxes = boxes;
+        this.speed = speed; this.classNames = classNames; this.boxes = Collections.unmodifiableList(new ArrayList<>(boxes));
     }
     @Override public String getSourcePath() { return sourcePath; }
     @Override public int getOriginalWidth() { return origWidth; }

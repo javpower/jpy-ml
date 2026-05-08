@@ -79,6 +79,7 @@ public class LLMFineTuner {
 
         try {
             PythonScriptLoader.ensureLoaded(engine, "_jpy_progress.py");
+            PythonScriptLoader.ensureLoaded(engine, "_jpy_utils.py");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_llm_training.py");
 
             Map<String, Object> loraDict = loraConfig.toDict();

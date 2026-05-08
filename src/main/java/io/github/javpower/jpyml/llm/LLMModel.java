@@ -133,6 +133,7 @@ public class LLMModel {
     public ChatResponse chat(List<ChatMessage> messages, GenerationConfig config) {
         DependencyManager.ensure("llm");
         try {
+            PythonScriptLoader.ensureLoaded(engine, "_jpy_utils.py");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_llm_inference.py");
 
             List<Map<String, String>> msgList = new ArrayList<>();
@@ -199,6 +200,7 @@ public class LLMModel {
         DependencyManager.ensure("llm");
         PythonEngine engine = PythonEngine.getInstance();
         try {
+            PythonScriptLoader.ensureLoaded(engine, "_jpy_utils.py");
             PythonScriptLoader.ensureLoaded(engine, "_jpy_llm_merge.py");
 
             engine.put("_jpy_llm_merge_model", modelPath != null ? modelPath : "");

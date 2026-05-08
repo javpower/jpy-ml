@@ -3,6 +3,7 @@ package io.github.javpower.jpyml.ml.model;
 import io.github.javpower.jpyml.core.PythonEngine;
 import io.github.javpower.jpyml.exception.InferenceException;
 import io.github.javpower.jpyml.ml.result.Mask;
+import io.github.javpower.jpyml.ml.result.ResultParseUtil;
 import io.github.javpower.jpyml.ml.result.SAM2VideoResult;
 import jep.JepException;
 import org.slf4j.Logger;
@@ -28,7 +29,7 @@ public class SAM2VideoTracker implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(SAM2VideoTracker.class);
     private final PythonEngine engine;
     private final String trackerVar;
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     SAM2VideoTracker(PythonEngine engine, String trackerVar) {
         this.engine = engine;
@@ -45,19 +46,7 @@ public class SAM2VideoTracker implements AutoCloseable {
     public void addPrompt(int frameIndex, Prompt prompt) throws InferenceException {
         ensureOpen();
         try {
-            Map<String, Object> pm = new LinkedHashMap<>();
-            if (prompt instanceof Prompt.Point point) {
-                pm.put("type", "point");
-                pm.put("x", point.x());
-                pm.put("y", point.y());
-                pm.put("label", point.label().getValue());
-            } else if (prompt instanceof Prompt.Box box) {
-                pm.put("type", "box");
-                pm.put("x1", box.x1());
-                pm.put("y1", box.y1());
-                pm.put("x2", box.x2());
-                pm.put("y2", box.y2());
-            }
+            Map<String, Object> pm = prompt.toPythonMap();
 
             engine.put(trackerVar + "_prompt", pm);
             engine.put(trackerVar + "_frame", frameIndex);
@@ -90,13 +79,8 @@ public class SAM2VideoTracker implements AutoCloseable {
                 int frameIdx = ((Number) fr.getOrDefault("frame_index", 0)).intValue();
                 @SuppressWarnings("unchecked")
                 List<List<Number>> polygon = (List<List<Number>>) fr.getOrDefault("polygon", List.of());
-                float[][] polyArray = new float[polygon.size()][2];
-                for (int i = 0; i < polygon.size(); i++) {
-                    polyArray[i][0] = polygon.get(i).get(0).floatValue();
-                    polyArray[i][1] = polygon.get(i).get(1).floatValue();
-                }
                 float score = ((Number) fr.getOrDefault("score", 0)).floatValue();
-                frames.add(new SAM2VideoResult.FrameResult(frameIdx, new Mask(polyArray), score));
+                frames.add(new SAM2VideoResult.FrameResult(frameIdx, new Mask(ResultParseUtil.parsePolygon(polygon)), score));
             }
 
             return new SAM2VideoResult(totalFrames, frames);

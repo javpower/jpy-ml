@@ -42,7 +42,7 @@ public class SAM2Model implements AutoCloseable {
     private final String varName;
     private final String modelPath;
     private final PythonEngine engine;
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     /**
      * Load a SAM 2 model.
@@ -83,32 +83,7 @@ public class SAM2Model implements AutoCloseable {
             String rv = varName + "_result";
 
             // Build prompts list in Python
-            List<Object> promptList = new ArrayList<>();
-            for (Prompt p : prompts) {
-                if (p instanceof Prompt.Point point) {
-                    Map<String, Object> pm = new LinkedHashMap<>();
-                    pm.put("type", "point");
-                    pm.put("x", point.x());
-                    pm.put("y", point.y());
-                    pm.put("label", point.label().getValue());
-                    promptList.add(pm);
-                } else if (p instanceof Prompt.Box box) {
-                    Map<String, Object> pm = new LinkedHashMap<>();
-                    pm.put("type", "box");
-                    pm.put("x1", box.x1());
-                    pm.put("y1", box.y1());
-                    pm.put("x2", box.x2());
-                    pm.put("y2", box.y2());
-                    promptList.add(pm);
-                } else if (p instanceof Prompt.Text text) {
-                    Map<String, Object> pm = new LinkedHashMap<>();
-                    pm.put("type", "text");
-                    pm.put("text", text.text());
-                    promptList.add(pm);
-                } else if (p instanceof Prompt.Mask) {
-                    throw new InferenceException("Mask prompts are not supported by SAM 2. Use Point or Box prompts.");
-                }
-            }
+            List<Object> promptList = new ArrayList<>(Prompt.toPythonList(prompts));
 
             engine.put(varName + "_prompts", promptList);
             engine.put(varName + "_img", imagePath);
@@ -137,25 +112,7 @@ public class SAM2Model implements AutoCloseable {
         try {
             PythonScriptLoader.ensureLoaded(engine, "_jpy_sam2_video.py");
 
-            List<Object> promptList = new ArrayList<>();
-            for (Prompt p : prompts) {
-                if (p instanceof Prompt.Point point) {
-                    Map<String, Object> pm = new LinkedHashMap<>();
-                    pm.put("type", "point");
-                    pm.put("x", point.x());
-                    pm.put("y", point.y());
-                    pm.put("label", point.label().getValue());
-                    promptList.add(pm);
-                } else if (p instanceof Prompt.Box box) {
-                    Map<String, Object> pm = new LinkedHashMap<>();
-                    pm.put("type", "box");
-                    pm.put("x1", box.x1());
-                    pm.put("y1", box.y1());
-                    pm.put("x2", box.x2());
-                    pm.put("y2", box.y2());
-                    promptList.add(pm);
-                }
-            }
+            List<Object> promptList = new ArrayList<>(Prompt.toPythonList(prompts));
 
             engine.put(varName + "_video_path", videoPath);
             engine.put(varName + "_video_prompts", promptList);
@@ -180,12 +137,7 @@ public class SAM2Model implements AutoCloseable {
         for (Map<String, Object> rm : rawMasks) {
             @SuppressWarnings("unchecked")
             List<List<Number>> polygon = (List<List<Number>>) rm.getOrDefault("polygon", List.of());
-            float[][] polyArray = new float[polygon.size()][2];
-            for (int i = 0; i < polygon.size(); i++) {
-                polyArray[i][0] = polygon.get(i).get(0).floatValue();
-                polyArray[i][1] = polygon.get(i).get(1).floatValue();
-            }
-            masks.add(new Mask(polyArray));
+            masks.add(new Mask(ResultParseUtil.parsePolygon(polygon)));
             scores.add(((Number) rm.getOrDefault("score", 0)).floatValue());
         }
 
@@ -214,6 +166,11 @@ public class SAM2Model implements AutoCloseable {
     public void close() {
         if (!closed) {
             closed = true;
+            try {
+                engine.exec("if '" + varName + "' in _jpy_sam2_models: del _jpy_sam2_models['" + varName + "']");
+            } catch (Exception e) {
+                log.debug("Error cleaning SAM2 model dict: {}", e.getMessage());
+            }
             try {
                 engine.exec(varName + " = None");
             } catch (Exception e) {

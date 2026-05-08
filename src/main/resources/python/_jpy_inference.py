@@ -1,11 +1,16 @@
 """Inference helper functions for jpy-ml."""
 from ultralytics import YOLO, RTDETR, SAM
 import numpy as np
+import threading
+
+_jpy_inference_lock = threading.Lock()
 
 def jpy_load_model(model_path, task=None):
     """Load a model. If task is specified, force that task type regardless of filename."""
     global _jpy_model_counter
-    var_name = f"_jpy_m{_jpy_model_counter}"
+    with _jpy_inference_lock:
+        var_name = f"_jpy_m{_jpy_model_counter}"
+        _jpy_model_counter += 1
 
     if task is not None:
         model = YOLO(model_path)
@@ -20,8 +25,8 @@ def jpy_load_model(model_path, task=None):
         else:
             model = YOLO(model_path)
 
-    _jpy_model_counter += 1
-    _jpy_models[var_name] = model
+    with _jpy_inference_lock:
+        _jpy_models[var_name] = model
     task_type = task if task is not None else (getattr(model, 'task', 'detect') or 'detect')
     names = dict(model.names) if hasattr(model, 'names') and model.names else {}
     return {
@@ -117,17 +122,55 @@ def jpy_batch_extract(results, task_type):
     """Extract all results from a batch as a list of dicts."""
     return [jpy_extract_result(r, task_type) for r in results]
 
-def jpy_batch_predict(var_name, sources, task_type, kwargs):
-    """Run prediction on multiple images. Returns list of extracted result dicts."""
-    if var_name not in _jpy_models:
-        raise KeyError(f"Model '{var_name}' not found. Was it loaded?")
-    model = _jpy_models[var_name]
-    results = []
+def jpy_batch_predict(model, sources, task_type, kwargs):
+    """Run prediction on multiple images using native batch inference.
+
+    Converts all sources (paths, URLs, bytes, numpy arrays) to numpy arrays
+    first, then passes the list to Ultralytics for GPU-batched inference.
+    Falls back to per-image processing if batch fails.
+    """
+    import cv2
+    import numpy as np
+
+    images = []
     for src in sources:
-        raw = model(src, **kwargs)
-        for r in raw:
+        img = _decode_source(src)
+        if img is not None:
+            images.append(img)
+
+    if not images:
+        return []
+
+    results = []
+    try:
+        raw_results = model(images, **kwargs)
+        for r in raw_results:
             results.append(jpy_extract_result(r, task_type))
+    except (TypeError, ValueError):
+        for img in images:
+            raw = model(img, **kwargs)
+            for r in raw:
+                results.append(jpy_extract_result(r, task_type))
     return results
+
+
+def _decode_source(src):
+    """Decode a source (path, URL, bytes, numpy array) to a BGR numpy array."""
+    import cv2
+    import numpy as np
+
+    if isinstance(src, np.ndarray):
+        return src
+    if isinstance(src, str):
+        if src.startswith(('http://', 'https://')):
+            import urllib.request
+            resp = urllib.request.urlopen(src)
+            arr = np.asarray(bytearray(resp.read()), dtype=np.uint8)
+            return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        return cv2.imread(src)
+    # bytes-like (Java byte[] from Jep)
+    arr = np.frombuffer(bytes(src), dtype=np.uint8)
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 def jpy_model_info(var_name):
     """Get model metadata."""
@@ -144,8 +187,9 @@ def jpy_model_info(var_name):
 
 def jpy_cleanup(var_name):
     """Remove model from cache and release GPU memory."""
-    if var_name in _jpy_models:
-        del _jpy_models[var_name]
+    with _jpy_inference_lock:
+        if var_name in _jpy_models:
+            del _jpy_models[var_name]
     try:
         import torch
         if torch.cuda.is_available():
