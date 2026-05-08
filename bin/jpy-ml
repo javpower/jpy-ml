@@ -1,10 +1,9 @@
 #!/bin/bash
-# jpy-ml CLI launcher
+# jpy-ml CLI launcher (Linux/macOS/Windows Git Bash)
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 JAR="$DIR/lib/jpy-ml-cli.jar"
-JRE="$DIR/../jre/bin/java"
 
 if [ ! -f "$JAR" ]; then
     echo "Error: $JAR not found" >&2
@@ -12,9 +11,14 @@ if [ ! -f "$JAR" ]; then
     exit 1
 fi
 
-# 优先使用打包的 JRE
+# 检测打包的 JRE (兼容 Windows Git Bash)
+JRE="$DIR/../jre/bin/java"
+JRE_EXE="$DIR/../jre/bin/java.exe"
+
 if [ -f "$JRE" ]; then
     exec "$JRE" -jar "$JAR" "$@"
+elif [ -f "$JRE_EXE" ]; then
+    exec "$JRE_EXE" -jar "$JAR" "$@"
 fi
 
 # 否则使用系统的 java
