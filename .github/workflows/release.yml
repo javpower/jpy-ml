@@ -6,8 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  # 1. 构建跨平台原生包
-  build-native:
+  build:
     strategy:
       matrix:
         include:
@@ -90,69 +89,30 @@ jobs:
 
         Compress-Archive -Path $DIST_DIR\* -DestinationPath "jpy-ml-$VERSION-${{ matrix.platform }}-${{ matrix.arch }}.zip"
 
-    - name: Upload native package
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: native-${{ matrix.platform }}-${{ matrix.arch }}
+        name: jpy-ml-${{ matrix.platform }}-${{ matrix.arch }}
         path: jpy-ml-*.${{ matrix.ext }}
 
-  # 2. 发布到 Maven Central + 创建 GitHub Release
   release:
-    needs: build-native
+    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: 17
-        distribution: temurin
-        cache: maven
-        server-id: central
-        server-username: MAVEN_USERNAME
-        server-password: MAVEN_PASSWORD
-        gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-        gpg-passphrase: MAVEN_GPG_PASSPHRASE
-
-    - name: Extract version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-    - name: Set version
-      run: |
-        mvn versions:set -DnewVersion=${{ steps.get_version.outputs.VERSION }}
-        mvn versions:commit
-
-    - name: Publish to Maven Central
-      run: mvn -B deploy -DskipTests
-      env:
-        MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-        MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
-        MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-    - name: Build CLI jar
-      run: mvn -B package -Pcli -DskipTests
-
-    - name: Download native packages
+    - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        path: native-packages
-        pattern: native-*
-
-    - name: List downloaded artifacts
-      run: find native-packages -type f | head -20
+        path: dist
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          target/jpy-ml-cli.jar
-          bin/jpy-ml
-          native-packages/**/*.tar.gz
-          native-packages/**/*.zip
+          dist/**/*.tar.gz
+          dist/**/*.zip
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
