@@ -179,6 +179,16 @@ No Python installation. No model downloads. No config files. No `Map<String, Obj
 - **GenerationConfig** — temperature, top-p, max tokens, repetition penalty
 - **Auto Dependency Install** — transformers, peft, trl, accelerate installed on first use
 
+### FLUX.1 — AI Image Generation
+- **FluxModel** — unified entry for text-to-image generation
+- **FLUX.1 Dev** — high-quality, 20 steps, requires HuggingFace authorization
+- **FLUX.1 Schnell** — fast generation, 4 steps, Apache 2.0 license
+- **Text-to-Image** — `flux.generate("A cat in space", "output.png")`
+- **Image-to-Image** — `flux.img2img(prompt, inputPath, outputPath, config)`
+- **Custom Config** — width, height, steps, guidance scale, seed
+- **Auto Device** — CPU / Apple MPS / NVIDIA CUDA
+- **Lazy Dependencies** — diffusers, transformers installed on first use
+
 ---
 
 ## Environment
@@ -1004,6 +1014,37 @@ String mergedPath = LLMModel.mergeAdapter(
 Also supports instruction format:
 ```json
 {"instruction": "Translate to English", "input": "你好", "output": "Hello"}
+```
+
+### FLUX.1 — Text-to-Image Generation
+
+```java
+// Quick generation (Schnell, 4 steps)
+try (FluxModel flux = new FluxModel("black-forest-labs/FLUX.1-schnell")) {
+    FluxResult result = flux.generate("A cat in space", "cat.png");
+    System.out.println("Output: " + result.getFirstOutputPath());
+    System.out.println("Time: " + result.getElapsedSeconds() + "s");
+}
+
+// High quality (Dev, 20 steps)
+FluxConfig config = FluxConfig.dev()
+    .width(1920)
+    .height(1080)
+    .steps(30)
+    .guidance(7.5f)
+    .seed(42);
+
+try (FluxModel flux = new FluxModel("black-forest-labs/FLUX.1-dev")) {
+    FluxResult result = flux.generate("A beautiful sunset", "sunset.png", config);
+}
+
+// Image-to-image
+try (FluxModel flux = new FluxModel("black-forest-labs/FLUX.1-schnell")) {
+    FluxResult result = flux.img2img(
+        "Oil painting style", "input.png", "output.png",
+        new FluxConfig().steps(10)
+    );
+}
 ```
 
 ### Basic Python Operations
