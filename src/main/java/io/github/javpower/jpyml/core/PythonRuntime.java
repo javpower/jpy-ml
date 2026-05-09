@@ -558,7 +558,10 @@ public class PythonRuntime {
 
     private static int runPipInstall(Path pythonExe, String... args) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(
-                pythonExe.toString(), "-m", "pip", "install"
+                pythonExe.toString(), "-m", "pip", "install",
+                "--proxy", "",
+                "--index-url", "https://pypi.org/simple",
+                "--extra-index-url", "https://mirrors.aliyun.com/pypi/simple"
         ).redirectErrorStream(true);
         for (String arg : args) pb.command().add(arg);
 
@@ -567,6 +570,14 @@ public class PythonRuntime {
         if (javaHome != null) {
             pb.environment().put("JAVA_HOME", javaHome);
         }
+        // Clear proxy env vars — cloud environments may have stale proxy config
+        for (String proxyVar : new String[]{
+                "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy",
+                "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"}) {
+            pb.environment().remove(proxyVar);
+        }
+        // Also disable pip's proxy via env to be safe
+        pb.environment().put("PIP_PROXY", "");
         // Add library search path for source builds (macOS/Linux)
         if (pythonHome != null) {
             Path libDir = pythonHome.resolve("lib");
