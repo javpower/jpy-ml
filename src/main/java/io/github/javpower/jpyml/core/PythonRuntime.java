@@ -714,7 +714,9 @@ public class PythonRuntime {
         var connection = (HttpURLConnection) new URL(url).openConnection(proxy);
         connection.setConnectTimeout(30_000);
         connection.setReadTimeout(300_000);
-        log.info("Downloading from {} (proxy: {})", url, proxy);
+        if (!Proxy.NO_PROXY.equals(proxy)) {
+            log.info("Using proxy: {}", proxy);
+        }
         int totalSize = connection.getContentLength();
         try (InputStream in = connection.getInputStream();
              OutputStream out = Files.newOutputStream(target)) {
