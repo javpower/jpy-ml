@@ -5,8 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -562,6 +561,39 @@ public class PythonRuntime {
         ).redirectErrorStream(true);
         for (String arg : args) pb.command().add(arg);
 
+        // Add proxy support for pip
+        // 快捷模式: -Djpy.proxy=true
+        String quickProxy = getQuickProxyUrl();
+        String proxy = null;
+        if (quickProxy != null) {
+            proxy = quickProxy;
+        } else {
+            proxy = System.getProperty("jpy.download.proxy");
+            if (proxy == null || proxy.isEmpty()) {
+                proxy = System.getenv("JPY_DOWNLOAD_PROXY");
+            }
+        }
+        if (proxy != null && !proxy.isEmpty()) {
+            pb.command().add("--proxy");
+            pb.command().add(proxy);
+        }
+
+        // Add custom PyPI index URL if configured
+        // 快捷模式下自动使用清华源
+        String indexUrl = System.getProperty("jpy.pip.index-url");
+        if (indexUrl == null || indexUrl.isEmpty()) {
+            indexUrl = System.getenv("JPY_PIP_INDEX_URL");
+        }
+        if (indexUrl == null || indexUrl.isEmpty()) {
+            if (quickProxy != null) {
+                indexUrl = "https://pypi.tuna.tsinghua.edu.cn/simple";
+            }
+        }
+        if (indexUrl != null && !indexUrl.isEmpty()) {
+            pb.command().add("--index-url");
+            pb.command().add(indexUrl);
+        }
+
         // Ensure JAVA_HOME for jep native build
         String javaHome = System.getProperty("java.home");
         if (javaHome != null) {
@@ -590,8 +622,67 @@ public class PythonRuntime {
         return exit;
     }
 
+    private static String getBaseUrl() {
+        // 优先级: 系统属性 > 环境变量 > 快捷代理模式 > 默认值
+        String url = System.getProperty("jpy.download.base-url");
+        if (url == null || url.isEmpty()) {
+            url = System.getenv("JPY_DOWNLOAD_BASE_URL");
+        }
+        if (url == null || url.isEmpty()) {
+            // 快捷代理模式下自动使用镜像
+            String quickProxy = System.getProperty("jpy.proxy");
+            if ("true".equalsIgnoreCase(quickProxy)) {
+                url = "https://mirror.ghproxy.com/https://github.com/astral-sh/python-build-standalone/releases/download/";
+            }
+        }
+        if (url == null || url.isEmpty()) {
+            url = "https://github.com/astral-sh/python-build-standalone/releases/download/";
+        }
+        if (!url.endsWith("/")) {
+            url += "/";
+        }
+        return url;
+    }
+
+    private static Proxy getDownloadProxy() {
+        // 快捷模式: -Djpy.proxy=true 使用默认代理 (http://127.0.0.1:7890)
+        String quickProxy = System.getProperty("jpy.proxy");
+        if ("true".equalsIgnoreCase(quickProxy)) {
+            return new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 7890));
+        }
+
+        // 优先级: 系统属性 > 环境变量
+        String proxy = System.getProperty("jpy.download.proxy");
+        if (proxy == null || proxy.isEmpty()) {
+            proxy = System.getenv("JPY_DOWNLOAD_PROXY");
+        }
+        if (proxy != null && !proxy.isEmpty()) {
+            try {
+                URI uri = new URI(proxy);
+                String host = uri.getHost();
+                int port = uri.getPort();
+                if (port == -1) {
+                    port = "https".equals(uri.getScheme()) ? 443 : 80;
+                }
+                return new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port));
+            } catch (URISyntaxException e) {
+                log.warn("Invalid proxy URL: {}, ignoring", proxy);
+            }
+        }
+        return Proxy.NO_PROXY;
+    }
+
+    private static String getQuickProxyUrl() {
+        // 快捷模式下返回默认代理 URL，供 pip 使用
+        String quickProxy = System.getProperty("jpy.proxy");
+        if ("true".equalsIgnoreCase(quickProxy)) {
+            return "http://127.0.0.1:7890";
+        }
+        return null;
+    }
+
     private static String buildDownloadUrl(String platformKey) {
-        String baseUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/";
+        String baseUrl = getBaseUrl();
         String releaseTag = PYTHON_RELEASE_TAG;
         String fileName = "cpython-" + PYTHON_VERSION + "+" + PYTHON_RELEASE_TAG;
 
@@ -619,9 +710,11 @@ public class PythonRuntime {
     }
 
     private static void downloadFile(String url, Path target) throws IOException {
-        var connection = (HttpURLConnection) new URL(url).openConnection();
+        Proxy proxy = getDownloadProxy();
+        var connection = (HttpURLConnection) new URL(url).openConnection(proxy);
         connection.setConnectTimeout(30_000);
         connection.setReadTimeout(300_000);
+        log.info("Downloading from {} (proxy: {})", url, proxy);
         int totalSize = connection.getContentLength();
         try (InputStream in = connection.getInputStream();
              OutputStream out = Files.newOutputStream(target)) {
