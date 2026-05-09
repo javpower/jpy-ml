@@ -47,30 +47,19 @@ jobs:
     - name: Build CLI fat jar
       run: mvn -B package -Pcli -DskipTests
 
-    - name: Create minimal JRE with jlink
-      shell: bash
-      run: |
-        jlink \
-          --module-path "$JAVA_HOME/jmods" \
-          --add-modules java.base,java.desktop,java.logging,java.management,java.naming,java.net.http,java.prefs,java.sql,java.xml,java.security.jgss,jdk.crypto.cryptoki,jdk.unsupported,jdk.compiler \
-          --strip-debug \
-          --compress=2 \
-          --output jre-minimal
-
     - name: Assemble distribution (Unix)
       if: runner.os != 'Windows'
       shell: bash
       run: |
         VERSION=${{ steps.get_version.outputs.VERSION }}
         DIST_DIR=jpy-ml-${{ matrix.platform }}-${{ matrix.arch }}
-        mkdir -p $DIST_DIR/bin $DIST_DIR/lib $DIST_DIR/jre
+        mkdir -p $DIST_DIR/bin $DIST_DIR/lib
         cp target/jpy-ml-cli.jar $DIST_DIR/lib/
-        cp -r jre-minimal/* $DIST_DIR/jre/
 
         cat > $DIST_DIR/bin/jpy-ml << 'LAUNCHER'
         #!/bin/bash
         DIR="$(cd "$(dirname "$0")" && pwd)"
-        exec "$DIR/../jre/bin/java" -jar "$DIR/../lib/jpy-ml-cli.jar" "$@"
+        exec java -jar "$DIR/../lib/jpy-ml-cli.jar" "$@"
         LAUNCHER
         chmod +x $DIST_DIR/bin/jpy-ml
 
@@ -82,14 +71,13 @@ jobs:
       run: |
         $VERSION = "${{ steps.get_version.outputs.VERSION }}"
         $DIST_DIR = "jpy-ml-${{ matrix.platform }}-${{ matrix.arch }}"
-        New-Item -ItemType Directory -Force -Path "$DIST_DIR\bin","$DIST_DIR\lib","$DIST_DIR\jre"
+        New-Item -ItemType Directory -Force -Path "$DIST_DIR\bin","$DIST_DIR\lib"
         Copy-Item target\jpy-ml-cli.jar "$DIST_DIR\lib\"
-        Copy-Item -Recurse jre-minimal\* "$DIST_DIR\jre\"
 
         @"
         @echo off
         set DIR=%~dp0
-        "%DIR%..\jre\bin\java.exe" -jar "%DIR%..\lib\jpy-ml-cli.jar" %*
+        java -jar "%DIR%..\lib\jpy-ml-cli.jar" %*
         "@ | Out-File -Encoding ascii "$DIST_DIR\bin\jpy-ml.bat"
 
         Compress-Archive -Path $DIST_DIR\* -DestinationPath "jpy-ml-$VERSION-${{ matrix.platform }}-${{ matrix.arch }}.zip"

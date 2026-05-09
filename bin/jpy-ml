@@ -11,21 +11,11 @@ if [ ! -f "$JAR" ]; then
     exit 1
 fi
 
-# 检测打包的 JRE (兼容 Windows Git Bash)
-JRE="$DIR/../jre/bin/java"
-JRE_EXE="$DIR/../jre/bin/java.exe"
-
-if [ -f "$JRE" ]; then
-    exec "$JRE" -jar "$JAR" "$@"
-elif [ -f "$JRE_EXE" ]; then
-    exec "$JRE_EXE" -jar "$JAR" "$@"
-fi
-
-# 否则使用系统的 java
+# 使用系统的 java
 if command -v java &> /dev/null; then
     exec java -jar "$JAR" "$@"
 fi
 
 echo "Error: Java not found" >&2
-echo "Install JDK 17 or use the bundled package" >&2
+echo "Install JDK 17 or higher" >&2
 exit 1
