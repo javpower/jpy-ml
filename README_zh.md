@@ -236,50 +236,6 @@ try (Model model = Model.preset("yolov8n")) {
   .venv/bin/pip install -r src/main/resources/requirements.txt
   ```
 
-### 代理与镜像配置
-
-对于服务器无法直接访问 GitHub 或 PyPI 的情况，支持以下配置：
-
-**快捷代理模式**（最简单）：
-```bash
-# 使用默认代理 (127.0.0.1:7890) + GitHub 镜像 + 清华 PyPI 源
-java -Djpy.proxy=true -jar your-app.jar
-
-# 或使用 CLI 脚本
-jpy-ml --proxy train ...
-```
-
-**JVM 系统属性**（高级）：
-```bash
-# HTTP/HTTPS 代理
-java -Djpy.download.proxy=http://127.0.0.1:7890 -jar your-app.jar
-
-# 自定义 GitHub 镜像源（下载 Python 运行时）
-java -Djpy.download.base-url=https://mirror.ghproxy.com/https://github.com/astral-sh/python-build-standalone/releases/download/ -jar your-app.jar
-
-# 自定义 PyPI 镜像源（pip 安装依赖）
-java -Djpy.pip.index-url=https://pypi.tuna.tsinghua.edu.cn/simple -jar your-app.jar
-
-# 自定义模型下载镜像源
-java -Djpy.model.base-url=https://mirror.ghproxy.com/https://github.com/ultralytics/assets/releases/download -jar your-app.jar
-```
-
-**环境变量**：
-```bash
-export JPY_DOWNLOAD_PROXY=http://127.0.0.1:7890
-export JPY_DOWNLOAD_BASE_URL=https://mirror.ghproxy.com/https://github.com/astral-sh/python-build-standalone/releases/download/
-export JPY_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-export JPY_MODEL_BASE_URL=https://mirror.ghproxy.com/https://github.com/ultralytics/assets/releases/download
-```
-
-| 属性 | 环境变量 | 说明 |
-|------|----------|------|
-| `jpy.proxy=true` | - | 快捷模式：代理 + 镜像（默认 127.0.0.1:7890） |
-| `jpy.download.proxy` | `JPY_DOWNLOAD_PROXY` | HTTP 代理地址（如 `http://host:port`） |
-| `jpy.download.base-url` | `JPY_DOWNLOAD_BASE_URL` | Python 运行时下载的自定义基础 URL |
-| `jpy.pip.index-url` | `JPY_PIP_INDEX_URL` | pip 使用的自定义 PyPI 源 |
-| `jpy.model.base-url` | `JPY_MODEL_BASE_URL` | 模型下载的自定义基础 URL |
-
 ---
 
 ## 快速开始

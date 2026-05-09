@@ -230,50 +230,6 @@ No Python installation. No model downloads. No config files. No `Map<String, Obj
   .venv/bin/pip install -r src/main/resources/requirements.txt
   ```
 
-### Proxy & Mirror Configuration
-
-For servers behind firewalls or in regions with limited GitHub access, configure proxy or mirror sources:
-
-**Quick Proxy Mode** (simplest):
-```bash
-# Uses default proxy (127.0.0.1:7890) + GitHub mirror + Tsinghua PyPI mirror
-java -Djpy.proxy=true -jar your-app.jar
-
-# Or with CLI script
-jpy-ml --proxy train ...
-```
-
-**JVM System Properties** (advanced):
-```bash
-# HTTP/HTTPS proxy
-java -Djpy.download.proxy=http://127.0.0.1:7890 -jar your-app.jar
-
-# Custom GitHub mirror for Python runtime
-java -Djpy.download.base-url=https://mirror.ghproxy.com/https://github.com/astral-sh/python-build-standalone/releases/download/ -jar your-app.jar
-
-# Custom PyPI index for pip install
-java -Djpy.pip.index-url=https://pypi.tuna.tsinghua.edu.cn/simple -jar your-app.jar
-
-# Custom model download mirror
-java -Djpy.model.base-url=https://mirror.ghproxy.com/https://github.com/ultralytics/assets/releases/download -jar your-app.jar
-```
-
-**Environment Variables**:
-```bash
-export JPY_DOWNLOAD_PROXY=http://127.0.0.1:7890
-export JPY_DOWNLOAD_BASE_URL=https://mirror.ghproxy.com/https://github.com/astral-sh/python-build-standalone/releases/download/
-export JPY_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-export JPY_MODEL_BASE_URL=https://mirror.ghproxy.com/https://github.com/ultralytics/assets/releases/download
-```
-
-| Property | Environment Variable | Description |
-|----------|---------------------|-------------|
-| `jpy.proxy=true` | - | Quick mode: proxy + mirror (default 127.0.0.1:7890) |
-| `jpy.download.proxy` | `JPY_DOWNLOAD_PROXY` | HTTP proxy URL (e.g., `http://host:port`) |
-| `jpy.download.base-url` | `JPY_DOWNLOAD_BASE_URL` | Custom base URL for Python runtime download |
-| `jpy.pip.index-url` | `JPY_PIP_INDEX_URL` | Custom PyPI index URL for pip |
-| `jpy.model.base-url` | `JPY_MODEL_BASE_URL` | Custom base URL for model downloads |
-
 ---
 
 ## Maven

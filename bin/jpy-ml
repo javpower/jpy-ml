@@ -11,41 +11,19 @@ if [ ! -f "$JAR" ]; then
     exit 1
 fi
 
-# 代理配置
-# 使用 --proxy 参数启用默认代理 (127.0.0.1:7890)
-# 使用 --proxy=host:port 指定自定义代理
-# 使用 --no-proxy 禁用代理
-PROXY_ARGS=""
-for arg in "$@"; do
-    case "$arg" in
-        --proxy)
-            PROXY_ARGS="-Djpy.proxy=true"
-            shift
-            ;;
-        --proxy=*)
-            PROXY_ARGS="-Djpy.download.proxy=http://${arg#--proxy=}"
-            shift
-            ;;
-        --no-proxy)
-            PROXY_ARGS=""
-            shift
-            ;;
-    esac
-done
-
 # 检测打包的 JRE (兼容 Windows Git Bash)
 JRE="$DIR/../jre/bin/java"
 JRE_EXE="$DIR/../jre/bin/java.exe"
 
 if [ -f "$JRE" ]; then
-    exec "$JRE" $PROXY_ARGS -jar "$JAR" "$@"
+    exec "$JRE" -jar "$JAR" "$@"
 elif [ -f "$JRE_EXE" ]; then
-    exec "$JRE_EXE" $PROXY_ARGS -jar "$JAR" "$@"
+    exec "$JRE_EXE" -jar "$JAR" "$@"
 fi
 
 # 否则使用系统的 java
 if command -v java &> /dev/null; then
-    exec java $PROXY_ARGS -jar "$JAR" "$@"
+    exec java -jar "$JAR" "$@"
 fi
 
 echo "Error: Java not found" >&2

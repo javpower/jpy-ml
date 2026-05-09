@@ -6,7 +6,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -19,55 +20,7 @@ public final class ModelHub {
 
     private static final Logger log = LoggerFactory.getLogger(ModelHub.class);
     private static final Path CACHE_DIR = Path.of(System.getProperty("user.home"), ".jpy-ml", "models");
-    private static final String DEFAULT_BASE_URL = "https://github.com/ultralytics/assets/releases/download";
-
-    private static String getBaseUrl() {
-        String url = System.getProperty("jpy.model.base-url");
-        if (url == null || url.isEmpty()) {
-            url = System.getenv("JPY_MODEL_BASE_URL");
-        }
-        if (url == null || url.isEmpty()) {
-            // 快捷代理模式下自动使用镜像
-            String quickProxy = System.getProperty("jpy.proxy");
-            if ("true".equalsIgnoreCase(quickProxy)) {
-                url = "https://mirror.ghproxy.com/https://github.com/ultralytics/assets/releases/download";
-            }
-        }
-        if (url == null || url.isEmpty()) {
-            url = DEFAULT_BASE_URL;
-        }
-        if (!url.endsWith("/")) {
-            url += "/";
-        }
-        return url;
-    }
-
-    private static Proxy getDownloadProxy() {
-        // 快捷模式: -Djpy.proxy=true 使用默认代理 (http://127.0.0.1:7890)
-        String quickProxy = System.getProperty("jpy.proxy");
-        if ("true".equalsIgnoreCase(quickProxy)) {
-            return new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 7890));
-        }
-
-        String proxy = System.getProperty("jpy.download.proxy");
-        if (proxy == null || proxy.isEmpty()) {
-            proxy = System.getenv("JPY_DOWNLOAD_PROXY");
-        }
-        if (proxy != null && !proxy.isEmpty()) {
-            try {
-                URI uri = new URI(proxy);
-                String host = uri.getHost();
-                int port = uri.getPort();
-                if (port == -1) {
-                    port = "https".equals(uri.getScheme()) ? 443 : 80;
-                }
-                return new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port));
-            } catch (URISyntaxException e) {
-                log.warn("Invalid proxy URL: {}, ignoring", proxy);
-            }
-        }
-        return Proxy.NO_PROXY;
-    }
+    private static final String BASE_URL = "https://github.com/ultralytics/assets/releases/download";
 
     private static final Map<String, ModelEntry> REGISTRY = new LinkedHashMap<>();
 
@@ -142,7 +95,7 @@ public final class ModelHub {
             return target;
         }
 
-        String url = getBaseUrl() + entry.version + "/" + entry.filename;
+        String url = BASE_URL + "/" + entry.version + "/" + entry.filename;
         log.info("[jpy-ml] Downloading {} ({}) ...", modelName, entry.size);
 
         Path tempFile = CACHE_DIR.resolve(entry.filename + ".tmp");
@@ -189,9 +142,8 @@ public final class ModelHub {
     }
 
     private static void downloadFile(String urlStr, Path target) throws IOException {
-        Proxy proxy = getDownloadProxy();
         URL url = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection(proxy);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestProperty("User-Agent", "jpy-ml");
         conn.setConnectTimeout(30000);
         conn.setReadTimeout(600000);
@@ -203,7 +155,7 @@ public final class ModelHub {
             String redirectUrl = conn.getHeaderField("Location");
             conn.disconnect();
             url = new URL(redirectUrl);
-            conn = (HttpURLConnection) url.openConnection(proxy);
+            conn = (HttpURLConnection) url.openConnection();
             conn.setRequestProperty("User-Agent", "jpy-ml");
             conn.setConnectTimeout(30000);
             conn.setReadTimeout(600000);
@@ -255,7 +207,7 @@ public final class ModelHub {
         public String getFilename() { return filename; }
         public TaskType getTask() { return task; }
         public String getSize() { return size; }
-        public String getUrl() { return getBaseUrl() + version + "/" + filename; }
+        public String getUrl() { return BASE_URL + "/" + version + "/" + filename; }
 
         @Override
         public String toString() {
